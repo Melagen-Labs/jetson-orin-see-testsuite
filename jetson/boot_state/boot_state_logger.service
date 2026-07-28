@@ -1,0 +1,14 @@
+[Unit]
+Description=Radtest boot-state uptime logger (channel 4, loop mode)
+Documentation=file:///opt/radtest/docs/BUILD_PLAN.md
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/radtest/jetson/boot_state/boot_state_logger.py \
+    --mode loop --log-dir /var/log/radtest/boot_state --interval 5.0
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

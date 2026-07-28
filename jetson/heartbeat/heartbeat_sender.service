@@ -1,0 +1,15 @@
+[Unit]
+Description=Radtest DUT heartbeat sender (1 Hz UDP to arbiter, channel 3b)
+Documentation=file:///opt/radtest/docs/BUILD_PLAN.md
+After=network.target
+
+[Service]
+Type=simple
+# Set --arbiter-ip to the arbiter's address on the beam-line ethernet segment.
+ExecStart=/usr/bin/python3 /opt/radtest/jetson/heartbeat/heartbeat_sender.py \
+    --arbiter-ip 192.168.1.10 --port 5555 --interval 1.0
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

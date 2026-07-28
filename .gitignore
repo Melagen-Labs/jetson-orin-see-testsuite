@@ -1,0 +1,33 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# --- Test log output (never commit captured run data) ---
+*.log
+logs/
+arbiter_logs/
+*.jsonl
+*.counter.json
+
+# --- Build artifacts from the vendored C/CUDA tools ---
+# (guards against committing objects if someone builds inside the submodule paths)
+build/
+*.o
+*.obj
+*.a
+*.so
+*.out
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+*~
+*.swp
+
+# --- Local Claude Code settings (machine-specific, not shared) ---
+.claude/settings.local.json

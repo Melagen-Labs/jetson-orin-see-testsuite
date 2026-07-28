@@ -1,0 +1,131 @@
+# jetson-orin-radtest
+
+Software suite for a **proton-beam Single Event Effect (SEE) radiation test of an
+NVIDIA Jetson Orin Nano**. Two machines are involved: the **DUT** (the Jetson,
+sitting in the beam, running a fixed/frozen software image) and the **arbiter**
+(a separate PC outside the beam, wired to the DUT over Ethernet and to a
+power-monitoring firmware board over USB/serial). The arbiter is the system of
+record, because it is the one component that keeps running through a DUT hang,
+reboot, or latchup. Five monitoring channels detect and time-correlate silent
+data corruption, memory faults, loss of responsiveness, autonomous reboots, and
+abnormal power / candidate single-event latchup (SEL).
+
+The authoritative design document is **[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)** —
+every script and doc here is built to match it.
+
+## Monitoring channels
+
+| # | Channel | DUT side | Arbiter side |
+|---|---------|----------|--------------|
+| 1 | GPU/CPU workload | `gpu-burn` (channel 1a, submodule + [patch notes](jetson/compute/gpu_burn_patch/README.md)) and [`cpu_sort_check.py`](jetson/compute/cpu_sort_check.py) (1b) | pulled compute logs |
+| 2 | Memory workload | NASA SMRT ([runbook](jetson/memory/run_smrt.md)) + cuda_memtest ([runbook](jetson/memory/run_cuda_memtest.md)) | pulled memory logs |
+| 3 | Heartbeat | watchdogd (local HW watchdog) + [`heartbeat_sender.py`](jetson/heartbeat/heartbeat_sender.py) (external UDP) | [`heartbeat_listener.py`](arbiter/heartbeat_listener.py) |
+| 4 | Boot-state | [`boot_state_logger.py`](jetson/boot_state/boot_state_logger.py) + kernel pstore/ramoops ([setup](docs/PSTORE_SETUP.md)) | pulled boot-state logs + pstore |
+| 5 | Power | EE firmware (separate repo) per [interface spec](docs/POWER_FIRMWARE_INTERFACE.md) | [`power_reader.py`](arbiter/power_reader.py) |
+
+The arbiter's [`arbiter_main.py`](arbiter/arbiter_main.py) ties channels 3, 4,
+and 5 together and appends every event into one timestamped JSONL correlator file
+so you can line up "heartbeat lost at T" against "current TRIPPED at T" against
+"reboot logged at T+2s".
+
+## Repository layout
+
+```
+jetson-orin-radtest/
+  README.md
+  docs/
+    BUILD_PLAN.md                 # authoritative design doc
+    POWER_FIRMWARE_INTERFACE.md   # channel-5 firmware<->arbiter contract
+    PSTORE_SETUP.md               # channel-4 kernel pstore/ramoops runbook
+  jetson/                         # runs on the DUT (Jetson Orin Nano)
+    compute/
+      cpu_sort_check.py           # CPU checksummed sort workload (1b)
+      cpu_sort_check.service
+      gpu_burn_patch/             # notes for modifying vendored gpu-burn (1a)
+    memory/
+      run_smrt.md                 # SMRT runbook (2a)
+      run_cuda_memtest.md         # cuda_memtest runbook (2b)
+    heartbeat/
+      heartbeat_sender.py         # external UDP heartbeat (3b)
+      heartbeat_sender.service
+    boot_state/
+      boot_state_logger.py        # boot-event + uptime logger (4)
+      boot_state_logger.service           # uptime loop (long-running)
+      boot_state_logger-boot.service      # boot event (oneshot)
+    vendor/                       # third-party tools as git submodules
+    systemd/                      # DUT unit install guide
+  arbiter/                        # runs on the arbiter PC (outside the beam)
+    arbiter_main.py               # correlator: heartbeat + power + log pulls
+    heartbeat_listener.py
+    power_reader.py
+    pull_logs.sh
+    requirements.txt
+  firmware/                       # placeholder; firmware owned by the EE
+  .gitignore
+```
+
+## Quick start (mirrors [BUILD_PLAN.md](docs/BUILD_PLAN.md) §7)
+
+> **Prerequisite — initialize submodules.** The GPU/memory/watchdog tools are
+> vendored as git submodules under `jetson/vendor/`. After cloning, run:
+> ```bash
+> git submodule update --init --recursive
+> ```
+> `gpu-burn`, `cuda_memtest`, and `watchdogd` are already pinned in `.gitmodules`;
+> the command above populates them. (NASA SMRT is added later per
+> [jetson/vendor/README.md](jetson/vendor/README.md).) **Build the vendored
+> C/CUDA tools on the Jetson itself** (sm_87 / JetPack CUDA), not on a dev machine.
+
+1. **Build phase** — flash/configure the Jetson (JetPack/L4T), install each
+   channel, and unit-test it individually on a bench Jetson (no beam). Confirm
+   logs land in the expected format at `/var/log/radtest/{compute,memory,boot_state}`.
+   The two from-scratch Python workloads have built-in self-tests:
+   ```bash
+   python3 jetson/compute/cpu_sort_check.py --once --n 100000 --logfile /tmp/cpu_sort.log
+   python3 jetson/boot_state/boot_state_logger.py --mode boot --log-dir /tmp/bs
+   ```
+2. **Integration phase** — run all channels simultaneously for an hours-long
+   soak; confirm no resource contention and that the arbiter's heartbeat listener
+   and `rsync` pull both work over the real beam-line Ethernet run. Start the
+   arbiter with:
+   ```bash
+   pip install -r arbiter/requirements.txt
+   python3 arbiter/arbiter_main.py --dut-host <DUT_IP> --power-serial-port /dev/ttyUSB0
+   ```
+   Install the DUT services per [jetson/systemd/README.md](jetson/systemd/README.md).
+3. **Calibration phase** — with everything running, capture the nominal power
+   profile and hand it to the EE for threshold-setting
+   ([interface spec](docs/POWER_FIRMWARE_INTERFACE.md) §6).
+4. **Image and freeze** — image the eMMC/SD card, hash it; that hash is your
+   fixed software image for the campaign.
+5. **At-facility phase** — flash the frozen image, run the pre-test checklist
+   (heartbeat up, pstore populates on a forced test panic, power firmware nominal),
+   then irradiate while watching the arbiter's live correlator output.
+6. **Post-test phase** — pull remaining logs, correlate by timestamp across all
+   five channels, and re-flash the frozen image before the next run.
+
+## Third-party dependencies
+
+| Channel | Repo | Link |
+|---|---|---|
+| GPU compute | gpu-burn (modify) | https://github.com/wilicc/gpu-burn |
+| CPU compute | none, build from scratch | — |
+| CPU/system memory | NASA SMRT (`test_ram.py`) | https://github.com/nasa/System_Monitor_for_Radiation_Testing |
+| GPU memory | cuda_memtest | https://github.com/ComputationalRadiationPhysics/cuda_memtest |
+| Heartbeat (local/HW watchdog) | watchdogd | https://github.com/troglobit/watchdogd |
+| Heartbeat (external/networked) | none, build from scratch | — |
+| Boot-state logging | Linux kernel pstore/ramoops (no repo) + custom logger | — |
+| Power | existing hardware + EE firmware, interface spec only | — |
+
+Submodules must be initialized (`git submodule update --init --recursive`) before
+building on the Jetson. See [jetson/vendor/README.md](jetson/vendor/README.md).
+
+## What still needs a human
+
+- Building/testing the vendored tools on real Jetson hardware (sm_87 / JetPack).
+- Applying the gpu-burn Sobel + JSON-logging patch (design in
+  [jetson/compute/gpu_burn_patch/](jetson/compute/gpu_burn_patch/)).
+- The EE's power firmware implementation of
+  [docs/POWER_FIRMWARE_INTERFACE.md](docs/POWER_FIRMWARE_INTERFACE.md).
+- On-site kernel/device-tree changes for pstore, applied at flash time
+  ([docs/PSTORE_SETUP.md](docs/PSTORE_SETUP.md)).

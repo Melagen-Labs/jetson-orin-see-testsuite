@@ -1,0 +1,9 @@
+[submodule "jetson/vendor/gpu-burn"]
+	path = jetson/vendor/gpu-burn
+	url = https://github.com/wilicc/gpu-burn.git
+[submodule "jetson/vendor/cuda_memtest"]
+	path = jetson/vendor/cuda_memtest
+	url = https://github.com/ComputationalRadiationPhysics/cuda_memtest.git
+[submodule "jetson/vendor/watchdogd"]
+	path = jetson/vendor/watchdogd
+	url = https://github.com/troglobit/watchdogd.git

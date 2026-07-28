@@ -1,0 +1,4 @@
+# Arbiter-side Python dependencies.
+# heartbeat_listener.py and arbiter_main.py use only the standard library;
+# power_reader.py needs pyserial for the USB-serial link to the power firmware.
+pyserial>=3.5

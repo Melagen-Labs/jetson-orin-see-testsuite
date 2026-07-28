@@ -1,0 +1,16 @@
+[Unit]
+Description=Radtest boot-state boot-event logger (channel 4, one-shot at boot)
+Documentation=file:///opt/radtest/docs/BUILD_PLAN.md
+# Ordered late in boot and paired with the long-running uptime logger so every
+# power-on/reboot appends exactly one boot record before the uptime series starts.
+After=multi-user.target
+Wants=boot_state_logger.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/radtest/jetson/boot_state/boot_state_logger.py \
+    --mode boot --log-dir /var/log/radtest/boot_state
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
