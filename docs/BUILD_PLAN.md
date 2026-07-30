@@ -1,21 +1,27 @@
 # Jetson Orin Nano Proton Beam SEE Test — Software Build Plan
 This is a from-scratch, step-by-step build plan for the five-channel monitoring system, organized to match your table. GPU and CPU are split into two separate builds under the shared "GPU/CPU workload" row, as requested. The power row is written as a firmware/software interface spec for your EE rather than a hardware shopping list, since you already have hardware and don't want to source more.
 
-> **⚠️ Status (2026-07-30) — read before using this plan.** Only **§1a
-> `cuda_particles`** is built and verified on hardware (Jetson Orin Nano, CUDA
-> 12.6, SM 8.7): clean multi-epoch run with bit-exact determinism, plus
-> fault-injection detection. Its only remaining item is a ~1 hr on-target soak
-> and committing `data/golden_hashes.txt`. **Every other section below (1b, 1c,
-> 2, 3, 4, 5, and the shared arbiter in §0) is tentative and untested** —
+> **⚠️ Status (2026-07-30) — read before using this plan.** **§1a
+> `cuda_particles` is fully qualified on hardware** (Jetson Orin Nano, CUDA 12.6,
+> SM 8.7): bit-exact determinism, fault-injection detection, a **~67 min /
+> 6,064-epoch soak with 0 anomalies** (6,063,272 iterations, clean SIGTERM stop
+> record), golden table generated on-target and committed
+> (`data/golden_hashes.txt`), **schema-v1 JSONL logging**, a **one-event-per-epoch
+> SEE counter** (JSONL + heartbeat), and a systemd unit aligned to the deployed
+> layout. **§5a's shared event schema is frozen at v1** and `cuda_particles` is
+> the first channel emitting it. **Every other section below (1b, 1c, 2, 3, 4, 5,
+> the §5b dashboard, and the shared arbiter in §0) is tentative and untested** —
 > written to this design but not yet compiled, run, or qualified on the DUT.
 > Build them out in the staged order below, bringing each to the same bar
 > (built → run on DUT → verified) before it is trusted.
 >
 > **Resolved decisions:** DUT = Jetson Orin Nano (SM 8.7, CUDA 12.6); primary GPU
 > detector = `cuda_particles` (gpu-burn secondary); result policy = **bit-exact**
-> (verified: zero false mismatches across epochs, so no tolerance mode needed).
-> Still open: shared JSONL schema freeze, memory budget, recovery policy, input
-> format, and per-repo ownership/deadlines (to be assigned at the 12:00 sync).
+> (verified: zero false mismatches over the 6M-iteration soak, so no tolerance
+> mode needed); **shared JSONL schema frozen at v1** (`docs/EVENT_SCHEMA.md`,
+> `docs/event_schema.json`, `shared/event_log.py` reference emitter/validator).
+> Still open: memory budget, recovery policy, input format, and per-repo
+> ownership/deadlines (to be assigned at the 12:00 sync).
 ---
 ## 0. Shared architecture (build this first, everything else plugs into it)
 Two machines are involved:
@@ -45,12 +51,13 @@ Steps:
    (CMake pins `CMAKE_CUDA_ARCHITECTURES=87`; OpenGL is compiled out — `PARTICLES_USE_GL` is never defined.)
 3. **Generate the golden reference on the target, once, with no beam:**
    `./cuda_particles --config config/particles.json --generate-golden`
-   Commit the resulting `data/golden_hashes.txt`. It is build- and device-specific — do **not** reuse a golden from another machine or build.
+   Commit the resulting `data/golden_hashes.txt`. It is build- and device-specific — do **not** reuse a golden from another machine or build. **✅ Done:** 20-hash table generated on the Orin Nano and committed; validated by the soak (0 anomalies).
 4. Run: the workload loops in deterministic **epochs** (reset → known state via `srand(1973)`), checksums the position+velocity buffers every K steps (FNV-1a 64), compares against the golden table, and writes:
-   - structured **JSONL** (one record per checksum event; anomalies flagged) to the DUT-local `compute/` log dir first, so records survive an Ethernet outage and are pulled later;
+   - structured **JSONL in the frozen schema v1** (§5a): every record carries `schema_version:1`, ms-precision `ts`, `run_id`, `jetson_id`, `channel:"compute"`, `event`, `status` (`ok`/`anomaly`/`info`), then the compute payload + beam/run metadata. Written to the DUT-local `compute/` log dir first so records survive an Ethernet outage and are pulled later.
+   - a **one-event-per-epoch SEE counter**: an epoch with ≥1 anomaly is collapsed to exactly one `see_event` record at the epoch boundary (raw mismatch counts over-represent an early hit, since the corrupted state cascades through the rest of that epoch). Running total surfaced as `see_events` in the heartbeat file and the `stop` record.
    - a **heartbeat/iteration counter** file each checksum step, so the arbiter can tell "stalled" (counter frozen, process alive) from "crashed" (process gone) from "corruption" (mismatch logged).
-   Install `cuda_particles.service` so a crash shows as `failed` and the workload auto-starts on boot. Exit code 2 = corruption observed.
-5. **Decision to confirm before freezing the image:** checksum/tolerance policy — bit-exact (default) vs. invariant-only. See `EXTRACTION_MAP.md` §6.
+   Install `cuda_particles.service` so a crash shows as `failed` and the workload auto-starts on boot. Exit code 2 = corruption observed. **✅ Done:** built + re-verified on-target after the schema change (golden matched, `see_events:0`, exit 0); the unit is aligned to the deployed layout (`/home/melagen/cuda_particles`, `User=melagen`) and ready for a sudo install.
+5. **Decision — resolved:** checksum/tolerance policy = **bit-exact** (default). Confirmed by 0 false mismatches over the 6M-iteration soak, so invariant-only tolerance is unnecessary. See `EXTRACTION_MAP.md` §6.
 
 ### 1b. GPU (secondary): gpu-burn stress / power profile
 Repo: **gpu-burn** — https://github.com/wilicc/gpu-burn
@@ -200,12 +207,12 @@ What the arbiter side needs to do (add to `arbiter_main.py`):
 3. Recovery is a deliberate, arbiter-issued command back to the firmware (e.g. a single serial command byte) after whatever cool-down/inspection your team decides on, not automatic.
 One calibration step before beam time: run the fixed test image's full workload (sections 1 to 4 all running) on the bench, with no radiation, and have the firmware log nominal current over time. Hand that profile to your EE so the abnormal/trip thresholds are set with real margin above actual running current rather than a guess.
 ---
-## 5a. Shared event schema (freeze before building 1b/1c/2/3/4/5) — tentative
-Before more channels are built, freeze **one JSONL record shape** every channel emits, so the arbiter and dashboard need exactly one parser. Without this, each channel invents its own format and every consumer becomes fragile.
-- **Common envelope** (identical for every channel): `schema_version`, `ts` (ISO-8601 UTC), `run_id`, `jetson_id`, `channel` (`compute|memory|heartbeat|boot|power`), `event`, `status` (`ok|anomaly|stall|crash|tripped|info`), plus the run/beam metadata `beam_energy`, `fluence_source`, `shield_config`.
-- **Channel payload** (per-channel fields): compute → `iteration, expected, actual, see_event`; memory → `address, pattern, expected, actual, xor`; heartbeat → `seq, uptime_s`; boot → `boot_id, uptime_s, reboot_count`; power → `current_mA, tripped`.
-- Example: `{"schema_version":1,"ts":"2026-07-30T18:22:04.531Z","run_id":"R-014","jetson_id":"orin-nano-01","channel":"compute","event":"checksum","status":"ok","iteration":50,"expected":"836d5c79e3cfefa8","actual":"836d5c79e3cfefa8","beam_energy":"64MeV","fluence_source":"cyclotron-A","shield_config":"2mm-Al"}`
-- **How to freeze:** write `docs/EVENT_SCHEMA.md` + a machine-checkable `event_schema.json` (JSON Schema) with a `schema_version`, and one small shared logger helper (Python side + the existing C++ `logger` in `cuda_particles`) so channels physically cannot drift. Commit it; Stages 1b–5 build against it.
+## 5a. Shared event schema — FROZEN at v1
+One JSONL record shape every channel emits, so the arbiter and dashboard need exactly one parser. Without this, each channel invents its own format and every consumer becomes fragile. **Frozen:** `docs/EVENT_SCHEMA.md` (human), `docs/event_schema.json` (JSON Schema draft-07), and `shared/event_log.py` (dependency-free reference `envelope()` / `validate()` / `emit()`, with a passing self-test). `cuda_particles` (§1a) is the first channel emitting v1 and its records validate against the reference.
+- **Common envelope** (identical for every channel, all required): `schema_version` (const `1`), `ts` (ISO-8601 UTC, ms precision), `run_id`, `jetson_id`, `channel` (`compute|memory|heartbeat|boot|power`), `event`, `status` (`ok|anomaly|stall|crash|tripped|info`), plus the run/beam metadata `beam_energy`, `fluence_source`, `shield_config`.
+- **Channel payload** (per-channel optional fields): compute → `iter, epoch, step, hash, golden, mismatch, finite, max_abs_pos, anomaly, see_event`; memory → `test, address, pattern, expected, actual, xor`; heartbeat → `seq, uptime_s`; boot → `boot_id, uptime_s, reboot_count`; power → `current_mA, tripped`.
+- Example (an actual `cuda_particles` compute record): `{"schema_version":1,"ts":"2026-07-30T06:20:50.925Z","run_id":"unset","jetson_id":"orin-nano-01","channel":"compute","event":"checksum","status":"ok","iter":30000,"epoch":29,"step":1000,"hash":"795182ca60b315cd","golden":"795182ca60b315cd","mismatch":false,"finite":true,"max_abs_pos":1,"anomaly":false,"beam_energy":"unset","fluence_source":"unset","shield_config":"unset"}`
+- **Building against it:** Stages 1b–5 emit through `shared/event_log.py` (`envelope()` + a channel payload → `emit()`) so channels physically cannot drift. New fields are additive under the same `schema_version`; a breaking change bumps the version.
 ---
 ## 5b. Operator dashboard (arbiter-side live view) — tentative
 A single-page, **read-only** live dashboard on the arbiter that shows every channel's **inputs** (run config) and **outputs** (live results) at a glance during a run. It depends on §5a: a dashboard over a frozen schema is a simple renderer; over five ad-hoc formats it is a maintenance sink.
