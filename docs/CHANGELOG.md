@@ -15,6 +15,15 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### `cuda_particles.service`: add ARMED boot gate (match mem_check)
+
+- **`fabf307` — cuda_particles.service: ConditionPathExists ARMED gate**
+  - `jetson/compute/cuda_particles/cuda_particles.service`: added
+    `ConditionPathExists=/home/melagen/cuda_particles/ARMED` so `enable` wires it
+    to boot but it only runs while the persistent `ARMED` flag exists (`touch`
+    once to arm — survives reboots; `rm` once to disarm). Mirrors the mem_check
+    gate so both channels arm identically.
+
 ### `mem_check.py`: auto-max memory coverage + boot arming flag
 
 - **`6c3d478` — mem_check: auto buffer sizing, coverage logging, ARMED gate**
