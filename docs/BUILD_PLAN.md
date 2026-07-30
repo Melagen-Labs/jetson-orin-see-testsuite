@@ -17,17 +17,36 @@ Steps:
 ---
 ## 1. GPU/CPU workload
 Two independent programs, run concurrently, both logging silent data corruption, crashes, and stalled iterations.
-### 1a. GPU: checksummed CUDA matrix/Sobel workload
+### 1a. GPU (primary): deterministic CUDA particle workload — cuda_particles
+Repo: **project-owned**, adapted from `NVIDIA/cuda-samples` `particles` — lives in this repo at `jetson/compute/cuda_particles/`.
+
+This is the **primary** GPU corruption detector. Rationale: a diverse physics workload (FP integration, integer spatial hashing, Thrust radix sort, atomics, irregular/scattered memory access) exercises far more *kinds* of GPU circuitry than a matrix multiply, so a single-event upset in a wider set of functional units actually manifests as a detectable wrong answer. Full reasoning: `jetson/compute/cuda_particles/EXTRACTION_MAP.md` §1.
+
+Steps:
+1. Prereqs on the DUT: JetPack CUDA toolkit (`nvcc`), CMake ≥ 3.18, `build-essential`.
+2. Build headless for the Orin Nano (Ampere, SM 8.7):
+   `cmake -S jetson/compute/cuda_particles -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`
+   (CMake pins `CMAKE_CUDA_ARCHITECTURES=87`; OpenGL is compiled out — `PARTICLES_USE_GL` is never defined.)
+3. **Generate the golden reference on the target, once, with no beam:**
+   `./cuda_particles --config config/particles.json --generate-golden`
+   Commit the resulting `data/golden_hashes.txt`. It is build- and device-specific — do **not** reuse a golden from another machine or build.
+4. Run: the workload loops in deterministic **epochs** (reset → known state via `srand(1973)`), checksums the position+velocity buffers every K steps (FNV-1a 64), compares against the golden table, and writes:
+   - structured **JSONL** (one record per checksum event; anomalies flagged) to the DUT-local `compute/` log dir first, so records survive an Ethernet outage and are pulled later;
+   - a **heartbeat/iteration counter** file each checksum step, so the arbiter can tell "stalled" (counter frozen, process alive) from "crashed" (process gone) from "corruption" (mismatch logged).
+   Install `cuda_particles.service` so a crash shows as `failed` and the workload auto-starts on boot. Exit code 2 = corruption observed.
+5. **Decision to confirm before freezing the image:** checksum/tolerance policy — bit-exact (default) vs. invariant-only. See `EXTRACTION_MAP.md` §6.
+
+### 1b. GPU (secondary): gpu-burn stress / power profile
 Repo: **gpu-burn** — https://github.com/wilicc/gpu-burn
+Role: **secondary** — a maximum-intensity thermal/power ("power virus") profile and a dead-simple bit-exact cross-check that the detection/logging pipeline works. It is *not* the primary corruption detector (it keeps the whole GPU busy but exercises only a narrow set of operation types). Run it alongside, or in alternation with, 1a.
 Steps:
 1. On the DUT: `sudo apt update && sudo apt install git build-essential` (CUDA toolkit comes with JetPack, so you already have `nvcc`/`cublas`).
 2. `git clone https://github.com/wilicc/gpu-burn.git && cd gpu-burn`
 3. Build for the Orin Nano's GPU (Ampere, compute capability 8.7): `make COMPUTE=87 CUDAPATH=/usr/local/cuda`
 4. Out of the box, gpu-burn already does a checksummed CUBLAS matrix-multiply loop and compares against a reference matrix, printing `FAULTY` if it detects a mismatch. Two modifications to make before beam time:
-   - Add a **Sobel kernel pass** alongside the matmul: run edge detection on a fixed, checksummed test image each iteration, compare the output checksum (e.g. CRC32 or a simple sum) against a precomputed golden value, and log any mismatch with the iteration count.
-   - Replace the stdout "FAULTY" print with a structured log line (timestamp, iteration number, which kernel, expected vs. actual checksum) written to a file in the DUT's local `compute/` log folder, since you need this to survive an Ethernet outage and be pulled later.
-   - Add a heartbeat-style **iteration counter file** written once per loop (e.g. every iteration or every second), so the arbiter can tell "stalled iteration" (file stopped updating, process still alive) apart from "crashed" (process gone) apart from "corruption" (checksum mismatch logged).
-### 1b. CPU: checksummed sort workload
+   - Replace the stdout "FAULTY" print with a structured log line (timestamp, iteration number, expected vs. actual checksum) written to a file in the DUT's local `compute/` log folder, since you need this to survive an Ethernet outage and be pulled later.
+   - Add a heartbeat-style **iteration counter file** written once per loop, so the arbiter can tell "stalled iteration" (file stopped updating, process still alive) apart from "crashed" (process gone) apart from "corruption" (checksum mismatch logged).
+### 1c. CPU: checksummed sort workload
 No existing repo fits this narrowly, so write it from scratch (roughly 60 lines of Python or C). Structure it the same way NASA's SMRT structures `test_ram.py`, so your log format is consistent:
 ```python
 # cpu_sort_check.py
@@ -168,7 +187,8 @@ One calibration step before beam time: run the fixed test image's full workload 
 ## 6. Repo reference table
 | Channel | Repo | Link |
 |---|---|---|
-| GPU compute | gpu-burn (modify) | https://github.com/wilicc/gpu-burn |
+| GPU compute (primary) | cuda_particles — project-owned, adapted from NVIDIA `particles` | `jetson/compute/cuda_particles/` |
+| GPU compute (secondary/stress) | gpu-burn | https://github.com/wilicc/gpu-burn |
 | CPU compute | none, build from scratch | — |
 | CPU/system memory | NASA SMRT (`test_ram.py`) | https://github.com/nasa/System_Monitor_for_Radiation_Testing |
 | GPU memory | cuda_memtest | https://github.com/ComputationalRadiationPhysics/cuda_memtest |

@@ -1,0 +1,20 @@
+{
+  "num_particles": 16384,
+  "grid_dim": 64,
+  "timestep": 0.5,
+  "epoch_iterations": 1000,
+  "checksum_interval": 50,
+  "iterations": 0,
+  "seed": 1973,
+  "tolerance_mode": "bitexact",
+
+  "log_dir": "./logs",
+  "golden_path": "./data/golden_hashes.txt",
+  "heartbeat_path": "./logs/heartbeat.txt",
+
+  "run_id": "unset",
+  "jetson_id": "orin-nano-01",
+  "beam_energy": "unset",
+  "fluence_source": "unset",
+  "shield_config": "unset"
+}
