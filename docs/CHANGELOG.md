@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `cuda_particles`: unify SEE field name + document counting semantics
 
-- **`c33c01f` — cuda_particles: rename `see_count`→`see_events`, document SEE counting**
+- **`aa801d8` — cuda_particles: rename `see_count`→`see_events`, document SEE counting**
   - `jetson/compute/cuda_particles/particles_main.cpp`: the `see_event` record's
     field renamed `see_count` → **`see_events`** (now matches the heartbeat and
     `stop` field — one name everywhere). Expanded the epoch-boundary comment to
