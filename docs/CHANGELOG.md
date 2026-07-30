@@ -15,6 +15,15 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### docs: add `docs/SERVICES.md` (systemd install + ARMED arming)
+
+- **`PENDING7` — docs: SERVICES.md**
+  - `docs/SERVICES.md` (**new**): how to install `cuda_particles`/`mem_check` as
+    systemd services; the ARMED arming model (one-time `touch`, persists across
+    reboots, `rm` to disarm); stop/disarm; and a section clarifying the two
+    "heartbeats" — DUT-local `heartbeat.txt` (liveness/counter snapshot) vs the
+    §3 external UDP heartbeat. Linked from `README.md` docs layout.
+
 ### `cuda_particles.service`: add ARMED boot gate (match mem_check)
 
 - **`fabf307` — cuda_particles.service: ConditionPathExists ARMED gate**
