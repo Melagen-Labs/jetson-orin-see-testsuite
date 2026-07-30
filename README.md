@@ -31,6 +31,8 @@ components as working; they are a starting point for the staged build-out in
 | `jetson/heartbeat/` + `arbiter/heartbeat_listener.py` | 🟠 Tentative — scaffolded, untested |
 | `jetson/boot_state/` + pstore/ramoops | 🟠 Tentative — scaffolded, untested |
 | `arbiter/` correlator, power reader, log pull | 🟠 Tentative — scaffolded, untested |
+| Shared JSONL event schema (`docs/EVENT_SCHEMA.md`) | 🟠 Planned — freeze before building the other channels ([BUILD_PLAN §5a](docs/BUILD_PLAN.md)) |
+| Operator dashboard (`arbiter/dashboard/`) — live view of all channel inputs/outputs | 🟠 Planned — read-only arbiter-side dashboard over the frozen schema ([BUILD_PLAN §5b](docs/BUILD_PLAN.md)) |
 | `firmware/` power board | 🟠 Tentative — owned by EE, not implemented here |
 
 ## Monitoring channels

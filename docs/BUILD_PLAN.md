@@ -200,6 +200,24 @@ What the arbiter side needs to do (add to `arbiter_main.py`):
 3. Recovery is a deliberate, arbiter-issued command back to the firmware (e.g. a single serial command byte) after whatever cool-down/inspection your team decides on, not automatic.
 One calibration step before beam time: run the fixed test image's full workload (sections 1 to 4 all running) on the bench, with no radiation, and have the firmware log nominal current over time. Hand that profile to your EE so the abnormal/trip thresholds are set with real margin above actual running current rather than a guess.
 ---
+## 5a. Shared event schema (freeze before building 1b/1c/2/3/4/5) — tentative
+Before more channels are built, freeze **one JSONL record shape** every channel emits, so the arbiter and dashboard need exactly one parser. Without this, each channel invents its own format and every consumer becomes fragile.
+- **Common envelope** (identical for every channel): `schema_version`, `ts` (ISO-8601 UTC), `run_id`, `jetson_id`, `channel` (`compute|memory|heartbeat|boot|power`), `event`, `status` (`ok|anomaly|stall|crash|tripped|info`), plus the run/beam metadata `beam_energy`, `fluence_source`, `shield_config`.
+- **Channel payload** (per-channel fields): compute → `iteration, expected, actual, see_event`; memory → `address, pattern, expected, actual, xor`; heartbeat → `seq, uptime_s`; boot → `boot_id, uptime_s, reboot_count`; power → `current_mA, tripped`.
+- Example: `{"schema_version":1,"ts":"2026-07-30T18:22:04.531Z","run_id":"R-014","jetson_id":"orin-nano-01","channel":"compute","event":"checksum","status":"ok","iteration":50,"expected":"836d5c79e3cfefa8","actual":"836d5c79e3cfefa8","beam_energy":"64MeV","fluence_source":"cyclotron-A","shield_config":"2mm-Al"}`
+- **How to freeze:** write `docs/EVENT_SCHEMA.md` + a machine-checkable `event_schema.json` (JSON Schema) with a `schema_version`, and one small shared logger helper (Python side + the existing C++ `logger` in `cuda_particles`) so channels physically cannot drift. Commit it; Stages 1b–5 build against it.
+---
+## 5b. Operator dashboard (arbiter-side live view) — tentative
+A single-page, **read-only** live dashboard on the arbiter that shows every channel's **inputs** (run config) and **outputs** (live results) at a glance during a run. It depends on §5a: a dashboard over a frozen schema is a simple renderer; over five ad-hoc formats it is a maintenance sink.
+- **Placement / safety:** runs **only on the arbiter, outside the beam**, and reads the **same correlator JSONL** `arbiter_main.py` already writes. It never talks to the DUT and never issues commands, so it cannot interfere with the test or the safety path.
+- **What it shows:**
+  - **Run header (inputs):** `run_id`, `jetson_id`, beam energy, fluence source, shield config, frozen image hash, and which workloads are active.
+  - **Per-channel status tiles (outputs):** compute (iteration counter, last checksum, cumulative **SEE event count**, exit state), memory (pass count, mismatches), heartbeat (alive / stalled / lost + last-seen age), boot-state (boot ID, uptime, reboot count), power (current_mA, NOMINAL/ABNORMAL/TRIPPED). Tiles are green/amber/red.
+  - **Live event feed:** tail of the correlator JSONL, newest first, anomalies highlighted.
+  - **Headline readout:** cross-section = cumulative SEE events ÷ fluence, updated live.
+- **How to build it:** a small Python process on the arbiter tails the correlator file and serves a static HTML page that polls a `/state` JSON endpoint (~1 Hz). No cloud, no external services, runs on the lab LAN. Planned location: `arbiter/dashboard/`.
+- **Status:** planned / tentative — not yet built. Build after §5a is frozen and the arbiter correlator is running.
+---
 ## 6. Repo reference table
 | Channel | Repo | Link |
 |---|---|---|
