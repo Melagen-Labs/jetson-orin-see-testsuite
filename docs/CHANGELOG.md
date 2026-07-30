@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Memory channel §2a: `mem_check.py` CPU/system-RAM tester (built & verified)
 
-- **`PENDING4` — memory §2a: add project-owned `mem_check.py` + config + service**
+- **`9d48a42` — memory §2a: add project-owned `mem_check.py` + config + service**
   - `jetson/memory/mem_check.py` (**new**): CPU/system-RAM pattern tester. Paints
     a numpy `uint8` buffer with `0x00/0xFF/0x55/0xAA`, read-back-verifies over
     `hold_sweeps` with a dwell, emits schema-v1 `memory` records
