@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `mem_check.py`: auto-max memory coverage + boot arming flag
 
-- **`PENDING5` — mem_check: auto buffer sizing, coverage logging, ARMED gate**
+- **`6c3d478` — mem_check: auto buffer sizing, coverage logging, ARMED gate**
   - `jetson/memory/mem_check.py`: `buffer_mb: "auto"` now sizes the buffer to
     `auto_fraction` (0.70) of free RAM from `/proc/meminfo`, maximizing DRAM under
     test while leaving OS/compute headroom. `start` record now logs `buffer_mb`,
