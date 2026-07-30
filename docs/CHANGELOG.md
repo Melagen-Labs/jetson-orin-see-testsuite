@@ -15,6 +15,19 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### `mem_check.py`: fix OOM at auto coverage (chunked verify)
+
+- **`PENDING8` — mem_check: verify in chunks to avoid a 2x-RAM temporary**
+  - `jetson/memory/mem_check.py`: the read-back verify did
+    `np.where(buf != val)` over the **whole** buffer, which allocates a full-size
+    boolean mask — so at the auto buffer size (70% of free RAM) the transient
+    footprint hit ~2× the buffer and the OOM killer SIGKILL'd the process. Now
+    scans in 64 MB `VERIFY_CHUNK_BYTES` slices (views, vectorized scrub), so peak
+    extra memory is one chunk, not one buffer.
+  - **Verified on-target:** auto run resolved to 4,335 MB (57% coverage), **no
+    OOM**, peak child RSS 4,430 MB (≈ buffer + ~95 MB); self-test still detects
+    (exit 2). Measured cadence: ~2.1 s to check every byte once.
+
 ### docs: add `docs/SERVICES.md` (systemd install + ARMED arming)
 
 - **`6688d90` — docs: SERVICES.md**

@@ -50,6 +50,10 @@ EL = _load_event_log()
 
 g_stop = False
 
+# Verify the buffer in slices this big so the transient compare mask stays small
+# (a whole-buffer `buf != val` would allocate a second full buffer and OOM).
+VERIFY_CHUNK_BYTES = 64 * 1024 * 1024
+
 
 def _handle_signal(signum, frame):
     global g_stop
@@ -227,32 +231,44 @@ def main():
                     addr = int(cfg["fault_inject_addr"]) % nbytes
                     buf[addr] ^= np.uint8(0x01)
 
-                # Read-back verify: indices whose byte no longer equals `val`.
-                mism = np.where(buf != np.uint8(val))[0]
-                if mism.size:
+                # Read-back verify. Scan in fixed-size CHUNKs so the temporary
+                # comparison mask stays small: `buf != val` over the whole buffer
+                # would allocate a full second buffer (2x RAM) and OOM at large
+                # `buffer_mb`. Peak extra memory here is one CHUNK, not one buffer.
+                total_mism = 0
+                emitted = 0
+                for off in range(0, nbytes, VERIFY_CHUNK_BYTES):
+                    seg = buf[off:off + VERIFY_CHUNK_BYTES]   # view, no copy
+                    idx = np.where(seg != np.uint8(val))[0]
+                    n = int(idx.size)
+                    if n == 0:
+                        continue
                     corruption_seen = True
-                    for idx in mism[:max_report]:
-                        idx = int(idx)
-                        actual = int(buf[idx])
+                    total_mism += n
+                    for i in idx.tolist():
+                        if emitted >= max_report:
+                            break
+                        actual = int(seg[i])
                         emit(fp, cfg, "mem_upset", "anomaly", {
                             "test": "moving_inversions",
-                            "address": ("0x%x" % idx),
+                            "address": ("0x%x" % (off + i)),
                             "pattern": ("0x%02x" % val),
                             "expected": ("0x%02x" % val),
                             "actual": ("0x%02x" % actual),
                             "xor": ("0x%02x" % (val ^ actual)),
                             "sweep": sweeps + 1,
                         })
-                        buf[idx] = np.uint8(val)   # scrub so it is counted once
-                        upsets += 1
-                    if mism.size > max_report:
-                        emit(fp, cfg, "mem_upset_overflow", "anomaly", {
-                            "test": "moving_inversions",
-                            "pattern": ("0x%02x" % val),
-                            "reported": max_report,
-                            "total_mismatches": int(mism.size),
-                            "sweep": sweeps + 1,
-                        })
+                        emitted += 1
+                    seg[idx] = np.uint8(val)   # vectorized scrub -> counted once
+                upsets += total_mism
+                if total_mism > emitted:
+                    emit(fp, cfg, "mem_upset_overflow", "anomaly", {
+                        "test": "moving_inversions",
+                        "pattern": ("0x%02x" % val),
+                        "reported": emitted,
+                        "total_mismatches": total_mism,
+                        "sweep": sweeps + 1,
+                    })
 
                 sweeps += 1
                 write_heartbeat(cfg["heartbeat_path"], sweeps, upsets, "0x%02x" % val)
