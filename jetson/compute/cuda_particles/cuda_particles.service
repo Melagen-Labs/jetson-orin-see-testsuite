@@ -7,6 +7,13 @@ Type=simple
 # Matches the proven on-target deployment under the melagen home dir. For a
 # system-wide install, copy the tree to /opt/see/cuda_particles and update the
 # three paths + User below to taste.
+#
+# ARMING: the unit is `enable`d (wired to boot) but only starts when the ARMED
+# flag file exists. `touch ARMED` once to arm a campaign -- it persists across
+# reboots, so every boot (incl. a crash/watchdog reboot) restarts the workload
+# with no further action. `rm ARMED` once to disarm so ordinary power-ons don't
+# run it. Restart=always covers process-level crashes while the board stays up.
+ConditionPathExists=/home/melagen/cuda_particles/ARMED
 User=melagen
 WorkingDirectory=/home/melagen/cuda_particles
 ExecStart=/home/melagen/cuda_particles/build/cuda_particles --config /home/melagen/cuda_particles/config/particles.json
