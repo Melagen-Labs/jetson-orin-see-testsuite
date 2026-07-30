@@ -17,13 +17,20 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `cuda_particles` README: document epoch-length tuning for SEE pile-up
 
+- **`PENDING3` — README: add the "when to change it" trigger for `epoch_iterations`**
+  - `jetson/compute/cuda_particles/README.md`: the epoch-tuning section now states
+    the decision rule — change `epoch_iterations` when SEEs are detected **more
+    often than ~1 per ~30 s** (SEE-affected epochs < ~50 apart, from the live
+    `see_events` rate). Corrected the threshold from ">30 epochs" to **">~50
+    epochs (~30 s)"** for a <1% undercount (undercount ≈ `SEE_rate × epoch_s / 2`).
+    Docs only.
+
 - **`a0d1dcb` — README: how/where to tune `epoch_iterations`**
   - `jetson/compute/cuda_particles/README.md`: added a "Tuning the epoch length"
     section — lower **`epoch_iterations`** in `config/particles.json` to shorten
-    the ~0.66 s epoch window and cut the odds of two SEEs per epoch; keep mean
-    SEE spacing > ~30 epochs for <1% undercount. Flags that changing
-    `epoch_iterations`/`checksum_interval` **requires regenerating the golden
-    table** (one hash per `epoch_iterations ÷ checksum_interval`). Docs only.
+    the ~0.66 s epoch window and cut the odds of two SEEs per epoch. Flags that
+    changing `epoch_iterations`/`checksum_interval` **requires regenerating the
+    golden table** (one hash per `epoch_iterations ÷ checksum_interval`). Docs only.
 
 ### `cuda_particles`: unify SEE field name + document counting semantics
 

@@ -76,10 +76,18 @@ epoch are undercounted by one. The undercount fraction ≈ `(SEE_rate × epoch_s
 so it only matters if the beam flux is high relative to the epoch window. The current
 epoch is ~0.66 s (`epoch_iterations: 1000` at the measured ~1,500 iters/s).
 
+**When to change it:** watch the live `see_events` rate — in `logs/heartbeat.txt` and
+across the `see_event` records' `epoch` numbers. As long as SEE-affected epochs are
+spaced **> ~50 epochs apart on average (≈ one SEE slower than every ~30 s)** the
+undercount stays under ~1% and no change is needed. If you start detecting SEEs **more
+often than about one every ~30 s** (affected epochs routinely < ~50 apart), the
+same-epoch double-hit fraction climbs and you should shorten the epoch. (General rule:
+undercount ≈ `SEE_rate × epoch_seconds / 2`.)
+
 To shorten the epoch window and reduce the chance of two SEEs landing in one epoch,
-**lower `epoch_iterations` in [`config/particles.json`](config/particles.json)** (keep
-mean SEE spacing > ~30 epochs to hold the undercount under 1%; watch the live
-`see_events` rate in the heartbeat). **Important:** the golden table holds one hash per
+**lower `epoch_iterations` in [`config/particles.json`](config/particles.json)** (from
+the current `1000`; halving it halves the epoch time and the undercount). **Important:**
+the golden table holds one hash per
 checksum step = `epoch_iterations ÷ checksum_interval`, so **any change to
 `epoch_iterations` (or `checksum_interval`) requires regenerating the golden table** on
 the Jetson (`./build/cuda_particles --config config/particles.json --generate-golden`)
