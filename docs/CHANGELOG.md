@@ -4,14 +4,14 @@ All notable changes to this repository, newest first. Each entry lists the
 commit, the files touched, and what changed — so a reviewer can go straight to
 the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
-> **Scope note (read before reviewing):** the **only** channel built and
-> verified on hardware is **`cuda_particles`** (GPU compute, §1a) — a
-> project-owned adaptation of **NVIDIA/cuda-samples "particles"**. It is **not**
-> NASA code. **No changes have been made to the NASA SMRT repo** (memory channel
-> §2a); SMRT is not yet vendored (`jetson/vendor/smrt` does not exist) — only the
-> runbook `jetson/memory/run_smrt.md` describes how to add it later. Likewise
-> `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream but unmodified
-> and unbuilt.
+> **Scope note (read before reviewing):** two **project-owned** channels are
+> built and verified on hardware — **`cuda_particles`** (GPU compute, §1a; a
+> project-owned adaptation of **NVIDIA/cuda-samples "particles"**, not NASA code)
+> and **`mem_check.py`** (CPU/system-RAM, §2a). **No changes have been made to
+> the NASA SMRT repo**; SMRT is not vendored (`jetson/vendor/smrt` does not
+> exist) — `mem_check.py` is our own tester using SMRT's method only as a
+> reference. `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream
+> but unmodified and unbuilt; all other channels remain tentative.
 
 ## 2026-07-30
 
