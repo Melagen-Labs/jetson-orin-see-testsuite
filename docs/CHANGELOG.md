@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `cuda_particles` README: document epoch-length tuning for SEE pile-up
 
-- **`PENDING3` — README: add the "when to change it" trigger for `epoch_iterations`**
+- **`69dfbc2` — README: add the "when to change it" trigger for `epoch_iterations`**
   - `jetson/compute/cuda_particles/README.md`: the epoch-tuning section now states
     the decision rule — change `epoch_iterations` when SEEs are detected **more
     often than ~1 per ~30 s** (SEE-affected epochs < ~50 apart, from the live
