@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Reece122/jetson-orin-see-testsuite/docs/event_schema.json",
+  "title": "Jetson SEE test — shared event record (v1)",
+  "type": "object",
+  "required": [
+    "schema_version", "ts", "run_id", "jetson_id", "channel", "event", "status"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "ts": { "type": "string", "description": "ISO-8601 UTC, ms precision, e.g. 2026-07-30T18:22:04.531Z" },
+    "run_id": { "type": "string" },
+    "jetson_id": { "type": "string" },
+    "channel": { "enum": ["compute", "memory", "heartbeat", "boot", "power"] },
+    "event": { "type": "string" },
+    "status": { "enum": ["ok", "anomaly", "stall", "crash", "tripped", "info"] },
+    "beam_energy": { "type": "string" },
+    "fluence_source": { "type": "string" },
+    "shield_config": { "type": "string" },
+
+    "iter": { "type": "integer" },
+    "epoch": { "type": "integer" },
+    "step": { "type": "integer" },
+    "hash": { "type": "string" },
+    "golden": { "type": "string" },
+    "mismatch": { "type": "boolean" },
+    "finite": { "type": "boolean" },
+    "max_abs_pos": { "type": "number" },
+    "anomaly": { "type": "boolean" },
+    "see_event": { "type": "boolean" },
+
+    "test": { "type": "string" },
+    "address": { "type": "string" },
+    "pattern": { "type": "string" },
+    "expected": { "type": "string" },
+    "actual": { "type": "string" },
+    "xor": { "type": "string" },
+
+    "seq": { "type": "integer" },
+    "uptime_s": { "type": "number" },
+    "boot_id": { "type": "string" },
+    "reboot_count": { "type": "integer" },
+
+    "current_mA": { "type": "number" },
+    "tripped": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "channel": { "const": "power" } } },
+      "then": { "required": ["current_mA"] }
+    },
+    {
+      "if": { "properties": { "channel": { "const": "boot" } } },
+      "then": { "required": ["boot_id"] }
+    }
+  ]
+}
