@@ -57,6 +57,7 @@ jetson-orin-radtest/
   README.md
   docs/
     BUILD_PLAN.md                 # authoritative design doc
+    CHANGELOG.md                  # every change, newest first (for review)
     POWER_FIRMWARE_INTERFACE.md   # channel-5 firmware<->arbiter contract
     PSTORE_SETUP.md               # channel-4 kernel pstore/ramoops runbook
   jetson/                         # runs on the DUT (Jetson Orin Nano)
