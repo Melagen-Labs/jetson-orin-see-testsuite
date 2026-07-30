@@ -11,8 +11,8 @@ from the `NVIDIA/cuda-samples` particles sample per the repository review
 - [x] Headless `particles_main.cpp` — continuous, epoch-based, per-iteration checksummed loop
 - [x] Project-owned modules: `config.*` (JSON), `checksum.*` (FNV-1a), `logger.*` (JSONL), heartbeat, SIGTERM handling
 - [x] Trimmed `CMakeLists.txt` (headless, `CMAKE_CUDA_ARCHITECTURES=87`, GL off) + `cuda_particles.service`
-- [ ] **On-target:** build on the Orin Nano, then `--generate-golden` to create `data/golden_hashes.txt`, commit it
-- [ ] **Decision:** confirm checksum/tolerance policy (bit-exact default vs invariant) — see EXTRACTION_MAP §6
+- [x] **On-target:** built on the Orin Nano, `--generate-golden` produced `data/golden_hashes.txt` (committed); validated by a ~67 min / 6,064-epoch soak with 0 anomalies
+- [x] **Decision:** checksum/tolerance policy = bit-exact default (0 false positives over the 6M-iteration soak) — see EXTRACTION_MAP §6
 - [ ] Update `docs/BUILD_PLAN.md` §1a: demote gpu-burn to secondary, make cuda_particles the primary GPU compute channel
 
 ## Layout
@@ -28,7 +28,7 @@ cuda_particles/
   src/                      # vendored physics (GL guarded out): particleSystem.{cpp,h,cuh},
                             #   particleSystem_cuda.cu, particles_kernel{,_impl}.cuh
   third_party/nvidia_common/# BSD-3 NVIDIA helper headers + LICENSE
-  data/golden_hashes.txt    # golden table — generated on-target (not committed yet)
+  data/golden_hashes.txt    # golden table — generated on-target, committed (20 hashes)
   logs/                     # runtime JSONL + heartbeat (created on the DUT)
 ```
 
