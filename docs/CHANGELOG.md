@@ -15,6 +15,16 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### docs: record DRAM-ECC check + memory check-frequency rationale (§2a)
+
+- **`PENDING9` — BUILD_PLAN §2a: DRAM ECC detection-scope note**
+  - `docs/BUILD_PLAN.md` §2a: documented that hardware DRAM ECC would hide
+    single-bit upsets from `mem_check`, and the on-target check (2026-07-30)
+    showing ECC appears **OFF** (empty `/sys/devices/system/edac/mc/`, no DRAM
+    EDAC driver, full 8 GB usable) — so single-bit upsets are visible. Noted the
+    sudo `dmesg` confirmation step, and why memory re-check cadence can be lazy
+    (persistent upsets; same-bit double-hit odds ≈ `(rate·interval)²/(2·N_bits)`).
+
 ### `mem_check.py`: fix OOM at auto coverage (chunked verify)
 
 - **`2af8d77` — mem_check: verify in chunks to avoid a 2x-RAM temporary**

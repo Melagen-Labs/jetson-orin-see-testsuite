@@ -110,6 +110,8 @@ What it does: allocates one contiguous numpy `uint8` buffer (`buffer_mb`), paint
 
 **Service + arming:** the unit is `enable`d (wired to boot) but gated by `ConditionPathExists=…/mem_check/ARMED`. `touch ARMED` before a campaign so every boot — including a watchdog/crash reboot — restarts the test; `rm ARMED` afterward so ordinary power-ons don't run it. `Restart=always` covers process-level crashes while the board stays up. Tuning knobs mirror the compute channel: `buffer_mb`, `auto_fraction`, `hold_sweeps`, `sweep_sleep_s`, `checkpoint_sweeps`.
 
+**Detection scope — DRAM ECC:** this tester only catches upsets that reach the software-visible value, so **hardware ECC would silently correct single-bit flips before we see them**, leaving only multi-bit upsets detectable. Checked on-target (2026-07-30): DRAM ECC appears **OFF** — `/sys/devices/system/edac/mc/` has no memory-controller instance, no DRAM EDAC driver is in the kernel config (only `MTD_NAND_ECC` for flash), no ECC boot parameter, and the full 8 GB is usable. So single-bit upsets are visible to `mem_check`, which is the intended regime. Definitive confirmation needs `sudo dmesg | grep -iE 'ecc|edac|dram'` on the DUT. **Check-frequency note:** memory upsets are persistent and same-bit double-hits are astronomically unlikely (~`(rate·interval)² / (2·N_bits)`, `N_bits` ≈ 3.4e10 for a 4 GB buffer), so the ~2 s re-check cadence loses nothing — the design goal is max coverage while staying light on the shared LPDDR5 bus, not fast polling.
+
 <details><summary>Original plan — vendor NASA SMRT (superseded, kept for reference)</summary>
 
 Repo: https://github.com/nasa/System_Monitor_for_Radiation_Testing
