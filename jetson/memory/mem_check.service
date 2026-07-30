@@ -6,6 +6,13 @@ After=multi-user.target
 Type=simple
 # Matches the on-target deployment under the melagen home dir. event_log.py is
 # deployed next to mem_check.py so the schema helper import resolves.
+#
+# ARMING: the unit is `enable`d (wired into boot) but only actually starts when
+# the ARMED flag file exists. `touch ARMED` before a campaign so every boot --
+# including a watchdog/crash reboot -- restarts the test; `rm ARMED` afterward so
+# ordinary power-ons do NOT run it. Restart=always covers process-level crashes
+# while the board stays up.
+ConditionPathExists=/home/melagen/mem_check/ARMED
 User=melagen
 WorkingDirectory=/home/melagen/mem_check
 ExecStart=/usr/bin/python3 /home/melagen/mem_check/mem_check.py --config /home/melagen/mem_check/config/mem_check.json

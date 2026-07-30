@@ -15,6 +15,25 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### `mem_check.py`: auto-max memory coverage + boot arming flag
+
+- **`PENDING5` — mem_check: auto buffer sizing, coverage logging, ARMED gate**
+  - `jetson/memory/mem_check.py`: `buffer_mb: "auto"` now sizes the buffer to
+    `auto_fraction` (0.70) of free RAM from `/proc/meminfo`, maximizing DRAM under
+    test while leaving OS/compute headroom. `start` record now logs `buffer_mb`,
+    `ram_total_mb`, `ram_avail_mb`, `coverage_pct`. Added optional `mlock: true`
+    (best-effort pin into physical RAM). Verified on-target: auto-resolved to
+    3,845 MB ≈ 50.5% of the 7.6 GB board; self-test still detects (exit 2), clean
+    run exits 0.
+  - `jetson/memory/config/mem_check.json`: `buffer_mb` → `"auto"`, add
+    `auto_fraction: 0.70`, `mlock: false`.
+  - `jetson/memory/mem_check.service`: added
+    `ConditionPathExists=…/mem_check/ARMED` — `enable` wires it to boot but it
+    only runs when the `ARMED` flag exists (`touch ARMED` for a campaign so
+    crash/watchdog reboots restart it; `rm ARMED` so normal power-ons don't).
+    `Restart=always` still covers process crashes.
+  - `docs/BUILD_PLAN.md` §2a updated (coverage + arming).
+
 ### Memory channel §2a: `mem_check.py` CPU/system-RAM tester (built & verified)
 
 - **`9d48a42` — memory §2a: add project-owned `mem_check.py` + config + service**

@@ -104,7 +104,11 @@ Two programs, covering the CPU-attached and GPU-attached access paths to the Ori
 
 What it does: allocates one contiguous numpy `uint8` buffer (`buffer_mb`), paints each pattern (`0x00, 0xFF, 0x55, 0xAA` — all-zeros/all-ones/both checkerboards, catching a bit stuck/flipped in either state), then read-back-verifies over `hold_sweeps` passes with a `sweep_sleep_s` dwell (exposure time). A mismatch → one schema-v1 `mem_upset` record per byte (`test, address, pattern, expected, actual, xor`, capped by `max_report`), then scrubs the byte so it is counted once. Heartbeat each sweep; `checkpoint` info records periodically; `start`/`stop` bracket the run; SIGTERM exits cleanly (exit 2 if any upset seen).
 
-**Verified on-target:** fault-injection self-test (`--self-test`) flips one bit and the detector logs it with the correct address/xor and exits 2; a clean bounded run on the full 2 GB buffer produced 0 anomalies, exit 0, and every record validates against `shared/event_log.py`. Install `mem_check.service` (systemd, `User=melagen`) for auto-start/restart. Tuning knobs mirror the compute channel: `buffer_mb`, `hold_sweeps`, `sweep_sleep_s`, `checkpoint_sweeps`.
+**Coverage:** `buffer_mb: "auto"` sizes the buffer to `auto_fraction` (default 0.70) of free RAM at startup — maximizing DRAM under test while leaving headroom for the OS and the co-running compute channel — and the `start` record logs `buffer_mb`, `ram_total_mb`, `ram_avail_mb`, and `coverage_pct`. On-target that resolved to ~3.85 GB ≈ 50% of the 7.6 GB board (the rest is already in use). Optional `mlock: true` pins the buffer in physical RAM (best-effort; needs a raised `ulimit -l`).
+
+**Verified on-target:** fault-injection self-test (`--self-test`) flips one bit and the detector logs it with the correct address/xor and exits 2; a clean auto-sized run (~3.85 GB, 50.5% coverage) produced 0 anomalies, exit 0, every record schema-v1 valid.
+
+**Service + arming:** the unit is `enable`d (wired to boot) but gated by `ConditionPathExists=…/mem_check/ARMED`. `touch ARMED` before a campaign so every boot — including a watchdog/crash reboot — restarts the test; `rm ARMED` afterward so ordinary power-ons don't run it. `Restart=always` covers process-level crashes while the board stays up. Tuning knobs mirror the compute channel: `buffer_mb`, `auto_fraction`, `hold_sweeps`, `sweep_sleep_s`, `checkpoint_sweeps`.
 
 <details><summary>Original plan — vendor NASA SMRT (superseded, kept for reference)</summary>
 

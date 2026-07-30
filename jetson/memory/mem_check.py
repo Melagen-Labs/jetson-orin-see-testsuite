@@ -110,6 +110,58 @@ def emit(fp, cfg, event, status, payload):
     EL.emit(fp, rec)
 
 
+def read_meminfo_mb():
+    """Return (MemTotal, MemAvailable) in MB from /proc/meminfo, or (None, None)."""
+    total = avail = None
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1]) // 1024
+                elif line.startswith("MemAvailable:"):
+                    avail = int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return total, avail
+
+
+def resolve_buffer_mb(cfg, ram_avail_mb):
+    """Resolve buffer_mb: a fixed integer, or "auto" -> a fraction of free RAM.
+
+    "auto" maximizes coverage while leaving headroom for the OS and any
+    co-running workload (e.g. cuda_particles): it takes `auto_fraction` (default
+    0.70) of MemAvailable at startup, so 30% of what is free stays as headroom.
+    """
+    spec = cfg["buffer_mb"]
+    if isinstance(spec, str) and spec.strip().lower() == "auto":
+        frac = float(cfg.get("auto_fraction", 0.70))
+        if ram_avail_mb:
+            return max(64, int(frac * ram_avail_mb))
+        sys.stderr.write("[mem_check] /proc/meminfo unavailable; 'auto' -> 2048 MB fallback\n")
+        return 2048
+    return int(spec)
+
+
+def try_mlock(buf):
+    """Pin the buffer in physical RAM so it can't be swapped out of DRAM.
+
+    Best-effort: needs a high `ulimit -l` (or CAP_IPC_LOCK). Returns True on
+    success, False (with a stderr note) if the OS refuses -- the test still runs,
+    just without a hard no-swap guarantee.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        if libc.mlock(ctypes.c_void_p(buf.ctypes.data),
+                      ctypes.c_size_t(buf.nbytes)) == 0:
+            return True
+        sys.stderr.write("[mem_check] mlock failed (errno %d); continuing unlocked\n"
+                         % ctypes.get_errno())
+    except Exception as e:  # noqa: BLE001 -- best-effort, never fatal
+        sys.stderr.write("[mem_check] mlock unavailable: %s\n" % e)
+    return False
+
+
 def main():
     global g_stop
     ap = argparse.ArgumentParser(description="CPU/system RAM SEE pattern tester (channel 2a)")
@@ -120,13 +172,16 @@ def main():
 
     cfg = load_config(args.config)
     if args.self_test:
-        cfg["buffer_mb"] = min(cfg["buffer_mb"], 64)
+        cfg["buffer_mb"] = 64
         cfg["iterations"] = 6
         cfg["hold_sweeps"] = 3
         cfg["fault_inject_sweep"] = 2
         cfg["fault_inject_addr"] = 12345
 
-    nbytes = int(cfg["buffer_mb"]) * 1024 * 1024
+    ram_total_mb, ram_avail_mb = read_meminfo_mb()
+    buffer_mb = resolve_buffer_mb(cfg, ram_avail_mb)
+    coverage_pct = round(100.0 * buffer_mb / ram_total_mb, 1) if ram_total_mb else None
+    nbytes = buffer_mb * 1024 * 1024
     patterns = [int(p, 16) if isinstance(p, str) else int(p) for p in cfg["patterns"]]
     K_hold = max(1, int(cfg["hold_sweeps"]))
     max_report = max(1, int(cfg["max_report"]))
@@ -142,10 +197,15 @@ def main():
 
     # Allocate the buffer up front so an OOM shows immediately, not mid-run.
     buf = np.empty(nbytes, dtype=np.uint8)
+    locked = try_mlock(buf) if cfg.get("mlock") else False
 
     emit(fp, cfg, "start", "info", {
         "test": "moving_inversions",
-        "buffer_mb": cfg["buffer_mb"],
+        "buffer_mb": buffer_mb,
+        "ram_total_mb": ram_total_mb,
+        "ram_avail_mb": ram_avail_mb,
+        "coverage_pct": coverage_pct,
+        "mlock": locked,
         "patterns": [("0x%02x" % p) for p in patterns],
         "hold_sweeps": K_hold,
         "self_test": bool(args.self_test),

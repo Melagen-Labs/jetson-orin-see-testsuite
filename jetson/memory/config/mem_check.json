@@ -1,5 +1,7 @@
 {
-  "buffer_mb": 2048,
+  "buffer_mb": "auto",
+  "auto_fraction": 0.70,
+  "mlock": false,
   "patterns": ["0x00", "0xFF", "0x55", "0xAA"],
   "hold_sweeps": 8,
   "sweep_sleep_s": 0.05,
