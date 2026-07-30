@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: add `docs/SERVICES.md` (systemd install + ARMED arming)
 
-- **`PENDING7` — docs: SERVICES.md**
+- **`6688d90` — docs: SERVICES.md**
   - `docs/SERVICES.md` (**new**): how to install `cuda_particles`/`mem_check` as
     systemd services; the ARMED arming model (one-time `touch`, persists across
     reboots, `rm` to disarm); stop/disarm; and a section clarifying the two
