@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: record DRAM-ECC check + memory check-frequency rationale (§2a)
 
-- **`PENDING9` — BUILD_PLAN §2a: DRAM ECC detection-scope note**
+- **`8ee7360` — BUILD_PLAN §2a: DRAM ECC detection-scope note**
   - `docs/BUILD_PLAN.md` §2a: documented that hardware DRAM ECC would hide
     single-bit upsets from `mem_check`, and the on-target check (2026-07-30)
     showing ECC appears **OFF** (empty `/sys/devices/system/edac/mc/`, no DRAM
