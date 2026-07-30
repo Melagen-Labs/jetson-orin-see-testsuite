@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `mem_check.py`: fix OOM at auto coverage (chunked verify)
 
-- **`PENDING8` — mem_check: verify in chunks to avoid a 2x-RAM temporary**
+- **`2af8d77` — mem_check: verify in chunks to avoid a 2x-RAM temporary**
   - `jetson/memory/mem_check.py`: the read-back verify did
     `np.where(buf != val)` over the **whole** buffer, which allocates a full-size
     boolean mask — so at the auto buffer size (70% of free RAM) the transient
