@@ -15,6 +15,30 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### Memory channel §2a: `mem_check.py` CPU/system-RAM tester (built & verified)
+
+- **`PENDING4` — memory §2a: add project-owned `mem_check.py` + config + service**
+  - `jetson/memory/mem_check.py` (**new**): CPU/system-RAM pattern tester. Paints
+    a numpy `uint8` buffer with `0x00/0xFF/0x55/0xAA`, read-back-verifies over
+    `hold_sweeps` with a dwell, emits schema-v1 `memory` records
+    (`mem_upset`: `test, address, pattern, expected, actual, xor`) via
+    `shared/event_log.py`, scrubs each detected byte (count-once), heartbeats
+    each sweep, `checkpoint`/`start`/`stop` records, clean SIGTERM (exit 2 on
+    upset). `--self-test` injects a bit flip to prove detection.
+  - `jetson/memory/config/mem_check.json` (**new**): buffer size, patterns,
+    dwell, log paths, run metadata.
+  - `jetson/memory/mem_check.service` (**new**): systemd unit, `User=melagen`,
+    deployed-layout paths.
+  - **Decision:** built project-owned rather than vendoring NASA SMRT (emits the
+    frozen schema directly; SMRT method kept as reference). `docs/BUILD_PLAN.md`
+    §2a rewritten to reflect this (old SMRT plan collapsed into a `<details>`);
+    root `README.md` status table + layout + reference table updated.
+  - **Verified on the Orin Nano:** `--self-test` flipped byte `0x3039` → logged
+    `mem_upset` (expected `0x00`, actual `0x01`, xor `0x01`), exit 2; clean
+    bounded run on the full 2 GB buffer → 0 anomalies, exit 0, `start`/2×
+    `checkpoint`/`stop`, **all records validate against schema v1** (0 invalid).
+    Fixed one bug pre-commit: `g_stop` needed a `global` decl in `main()`.
+
 ### `cuda_particles` README: document epoch-length tuning for SEE pile-up
 
 - **`69dfbc2` — README: add the "when to change it" trigger for `epoch_iterations`**

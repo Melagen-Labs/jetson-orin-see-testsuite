@@ -98,7 +98,16 @@ Run this as a systemd service so a crash is visible (service state goes to `fail
 ---
 ## 2. Memory workload
 Two programs, covering the CPU-attached and GPU-attached access paths to the Orin Nano's shared LPDDR5.
-### 2a. CPU/system RAM: NASA SMRT
+
+### 2a. CPU/system RAM: `mem_check.py` — ✅ built & verified on the Orin Nano
+**Decision:** built **project-owned** `jetson/memory/mem_check.py` rather than vendoring NASA SMRT — it emits the frozen schema v1 directly (channel `memory`) via `shared/event_log.py`, so no translator/parser layer over SMRT's own log format, and it is small enough to review. SMRT's moving-inversions method is the design reference (see `jetson/memory/run_smrt.md`).
+
+What it does: allocates one contiguous numpy `uint8` buffer (`buffer_mb`), paints each pattern (`0x00, 0xFF, 0x55, 0xAA` — all-zeros/all-ones/both checkerboards, catching a bit stuck/flipped in either state), then read-back-verifies over `hold_sweeps` passes with a `sweep_sleep_s` dwell (exposure time). A mismatch → one schema-v1 `mem_upset` record per byte (`test, address, pattern, expected, actual, xor`, capped by `max_report`), then scrubs the byte so it is counted once. Heartbeat each sweep; `checkpoint` info records periodically; `start`/`stop` bracket the run; SIGTERM exits cleanly (exit 2 if any upset seen).
+
+**Verified on-target:** fault-injection self-test (`--self-test`) flips one bit and the detector logs it with the correct address/xor and exits 2; a clean bounded run on the full 2 GB buffer produced 0 anomalies, exit 0, and every record validates against `shared/event_log.py`. Install `mem_check.service` (systemd, `User=melagen`) for auto-start/restart. Tuning knobs mirror the compute channel: `buffer_mb`, `hold_sweeps`, `sweep_sleep_s`, `checkpoint_sweeps`.
+
+<details><summary>Original plan — vendor NASA SMRT (superseded, kept for reference)</summary>
+
 Repo: https://github.com/nasa/System_Monitor_for_Radiation_Testing
 Steps:
 1. `git clone https://github.com/nasa/System_Monitor_for_Radiation_Testing.git`
@@ -106,6 +115,8 @@ Steps:
 3. Edit the user-input section at the top of `py_src/start_tests.py`: set `ram_pct_to_use` (leave headroom, e.g. 80%, since you're also running the sort/compute workloads on the same board), `data_save_interval` (use < 3 s given you're expecting a real particle flux), `test_cycle_time` (0.1 s as the README recommends).
 4. This gives you `test_ram.py`'s pattern-write/read/consistency-check loop and its `RAM STATE CHANGE DETECTED` log line, exactly the "pattern write/read and allocation stress; log mismatch address/value" row.
 5. You don't need `test_disks.py`/`test_networks.py` for your spec, but there's no harm leaving them running, they're free peripheral-dropout indicators.
+</details>
+
 ### 2b. GPU memory: cuda_memtest
 Repo: https://github.com/ComputationalRadiationPhysics/cuda_memtest
 Steps:

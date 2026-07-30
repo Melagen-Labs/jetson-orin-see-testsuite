@@ -1,0 +1,21 @@
+{
+  "buffer_mb": 2048,
+  "patterns": ["0x00", "0xFF", "0x55", "0xAA"],
+  "hold_sweeps": 8,
+  "sweep_sleep_s": 0.05,
+  "checkpoint_sweeps": 100,
+  "max_report": 64,
+  "iterations": 0,
+
+  "log_dir": "./logs",
+  "heartbeat_path": "./logs/heartbeat.txt",
+
+  "run_id": "unset",
+  "jetson_id": "orin-nano-01",
+  "beam_energy": "unset",
+  "fluence_source": "unset",
+  "shield_config": "unset",
+
+  "fault_inject_sweep": 0,
+  "fault_inject_addr": 0
+}

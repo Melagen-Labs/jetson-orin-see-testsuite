@@ -1,0 +1,20 @@
+[Unit]
+Description=CPU/system RAM SEE pattern tester (Jetson Orin Nano, channel 2a)
+After=multi-user.target
+
+[Service]
+Type=simple
+# Matches the on-target deployment under the melagen home dir. event_log.py is
+# deployed next to mem_check.py so the schema helper import resolves.
+User=melagen
+WorkingDirectory=/home/melagen/mem_check
+ExecStart=/usr/bin/python3 /home/melagen/mem_check/mem_check.py --config /home/melagen/mem_check/config/mem_check.json
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=2
+# Exit code 2 (upset observed) still restarts, but is recorded in the journal.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

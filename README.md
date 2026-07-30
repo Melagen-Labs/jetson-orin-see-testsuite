@@ -23,10 +23,10 @@ components as working; they are a starting point for the staged build-out in
 
 | Component | Status |
 |---|---|
-| [`jetson/compute/cuda_particles/`](jetson/compute/cuda_particles/) — deterministic CUDA workload (primary GPU SEE detector) | ✅ **Built & verified on the Orin Nano** (clean multi-epoch run, bit-exact determinism, fault-injection detection). Remaining: ~1 hr soak + commit golden table. |
+| [`jetson/compute/cuda_particles/`](jetson/compute/cuda_particles/) — deterministic CUDA workload (primary GPU SEE detector) | ✅ **Built & verified on the Orin Nano** — bit-exact determinism, fault-injection detection, ~67 min / 6,064-epoch soak (0 anomalies), golden table committed, schema-v1 logging + SEE counter. |
+| [`jetson/memory/mem_check.py`](jetson/memory/mem_check.py) — CPU/system RAM pattern tester (channel 2a) | ✅ **Built & verified on the Orin Nano** — fault-injection detection proven, 0 false positives on 2 GB over a bounded run, all records schema-v1 valid. |
 | `jetson/vendor/gpu-burn` (secondary GPU stress) | 🟠 Tentative — not built/qualified on DUT |
-| `jetson/vendor/cuda_memtest` (GPU memory) | 🟠 Tentative — not built/qualified on DUT |
-| NASA SMRT (CPU/system RAM) | 🟠 Tentative — not vendored/qualified on DUT |
+| `jetson/vendor/cuda_memtest` (GPU memory, channel 2b) | 🟠 Tentative — not built/qualified on DUT |
 | `jetson/compute/cpu_sort_check.py` (CPU workload) | 🟠 Tentative — not run on DUT |
 | `jetson/heartbeat/` + `arbiter/heartbeat_listener.py` | 🟠 Tentative — scaffolded, untested |
 | `jetson/boot_state/` + pstore/ramoops | 🟠 Tentative — scaffolded, untested |
@@ -40,7 +40,7 @@ components as working; they are a starting point for the staged build-out in
 | # | Channel | DUT side | Arbiter side |
 |---|---------|----------|--------------|
 | 1 | GPU/CPU workload | ✅ **[`cuda_particles`](jetson/compute/cuda_particles/) (primary, verified)**; `gpu-burn` (secondary stress, 🟠 tentative) + [`cpu_sort_check.py`](jetson/compute/cpu_sort_check.py) (CPU, 🟠 tentative) | pulled compute logs |
-| 2 | Memory workload | NASA SMRT ([runbook](jetson/memory/run_smrt.md)) + cuda_memtest ([runbook](jetson/memory/run_cuda_memtest.md)) | pulled memory logs |
+| 2 | Memory workload | ✅ **[`mem_check.py`](jetson/memory/mem_check.py) (CPU RAM, 2a — verified)** + cuda_memtest (GPU mem, 2b — 🟠 tentative, [runbook](jetson/memory/run_cuda_memtest.md)) | pulled memory logs |
 | 3 | Heartbeat | watchdogd (local HW watchdog) + [`heartbeat_sender.py`](jetson/heartbeat/heartbeat_sender.py) (external UDP) | [`heartbeat_listener.py`](arbiter/heartbeat_listener.py) |
 | 4 | Boot-state | [`boot_state_logger.py`](jetson/boot_state/boot_state_logger.py) + kernel pstore/ramoops ([setup](docs/PSTORE_SETUP.md)) | pulled boot-state logs + pstore |
 | 5 | Power | EE firmware (separate repo) per [interface spec](docs/POWER_FIRMWARE_INTERFACE.md) | [`power_reader.py`](arbiter/power_reader.py) |
@@ -66,7 +66,10 @@ jetson-orin-radtest/
       cpu_sort_check.service
       gpu_burn_patch/             # notes for modifying vendored gpu-burn (1a)
     memory/
-      run_smrt.md                 # SMRT runbook (2a)
+      mem_check.py                # CPU/system RAM pattern tester (2a, verified)
+      config/mem_check.json       # mem_check run config
+      mem_check.service           # systemd unit (2a)
+      run_smrt.md                 # SMRT runbook (reference for 2a)
       run_cuda_memtest.md         # cuda_memtest runbook (2b)
     heartbeat/
       heartbeat_sender.py         # external UDP heartbeat (3b)
@@ -133,7 +136,7 @@ jetson-orin-radtest/
 |---|---|---|
 | GPU compute | gpu-burn (modify) | https://github.com/wilicc/gpu-burn |
 | CPU compute | none, build from scratch | — |
-| CPU/system memory | NASA SMRT (`test_ram.py`) | https://github.com/nasa/System_Monitor_for_Radiation_Testing |
+| CPU/system memory | `mem_check.py` — project-owned (SMRT method as reference) | `jetson/memory/mem_check.py` |
 | GPU memory | cuda_memtest | https://github.com/ComputationalRadiationPhysics/cuda_memtest |
 | Heartbeat (local/HW watchdog) | watchdogd | https://github.com/troglobit/watchdogd |
 | Heartbeat (external/networked) | none, build from scratch | — |
