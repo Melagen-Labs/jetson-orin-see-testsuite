@@ -17,6 +17,7 @@
  * target with --generate-golden, committed, then compared during beam runs.
  */
 
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -39,9 +40,14 @@
 static volatile sig_atomic_t g_stop = 0;
 static void handleSignal(int) { g_stop = 1; }
 
+// ISO-8601 UTC with millisecond precision, e.g. 2026-07-30T18:22:04.531Z,
+// matching the shared schema-v1 emitter (shared/event_log.py iso_now()).
 static std::string nowIso()
 {
-    time_t t = time(nullptr);
+    using namespace std::chrono;
+    system_clock::time_point now = system_clock::now();
+    time_t t = system_clock::to_time_t(now);
+    int ms = (int)(duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000);
     struct tm tmv;
 #if defined(_WIN32)
     gmtime_s(&tmv, &t);
@@ -49,19 +55,37 @@ static std::string nowIso()
     gmtime_r(&t, &tmv);
 #endif
     char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tmv);
-    return std::string(buf);
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tmv);
+    char out[40];
+    snprintf(out, sizeof(out), "%s.%03dZ", buf, ms);
+    return std::string(out);
 }
 
-// Common metadata fragment appended to every JSON record.
+// Beam/run metadata trio, appended near the end of every record (schema v1
+// "meta" fields). run_id / jetson_id live in the envelope, not here.
 static std::string metaFields(const Config &c)
 {
     std::string s;
-    s += "\"run_id\":\"" + jsonEscape(c.run_id) + "\",";
-    s += "\"jetson_id\":\"" + jsonEscape(c.jetson_id) + "\",";
     s += "\"beam_energy\":\"" + jsonEscape(c.beam_energy) + "\",";
     s += "\"fluence_source\":\"" + jsonEscape(c.fluence_source) + "\",";
     s += "\"shield_config\":\"" + jsonEscape(c.shield_config) + "\"";
+    return s;
+}
+
+// Schema-v1 envelope: the seven required leading fields, opening brace included
+// and a trailing comma so the caller appends its channel payload, then
+// metaFields(c), then the closing brace. See docs/EVENT_SCHEMA.md.
+static std::string envelope(const Config &c, const char *event,
+                            const char *channel, const char *status)
+{
+    std::string s = "{";
+    s += "\"schema_version\":1,";
+    s += "\"ts\":\"" + nowIso() + "\",";
+    s += "\"run_id\":\"" + jsonEscape(c.run_id) + "\",";
+    s += "\"jetson_id\":\"" + jsonEscape(c.jetson_id) + "\",";
+    s += "\"channel\":\"" + std::string(channel) + "\",";
+    s += "\"event\":\"" + std::string(event) + "\",";
+    s += "\"status\":\"" + std::string(status) + "\",";
     return s;
 }
 
@@ -90,12 +114,13 @@ static bool writeGolden(const std::string &path, const std::vector<uint64_t> &ha
 }
 
 static void writeHeartbeat(const std::string &path, unsigned long long totalIter,
-                           unsigned long long epoch, unsigned int step)
+                           unsigned long long epoch, unsigned int step,
+                           unsigned long long seeEvents)
 {
     FILE *f = fopen(path.c_str(), "w");
     if (!f) return;
-    fprintf(f, "{\"iter\":%llu,\"epoch\":%llu,\"step\":%u,\"unixtime\":%lld}\n",
-            totalIter, epoch, step, (long long)time(nullptr));
+    fprintf(f, "{\"iter\":%llu,\"epoch\":%llu,\"step\":%u,\"see_events\":%llu,\"unixtime\":%lld}\n",
+            totalIter, epoch, step, seeEvents, (long long)time(nullptr));
     fflush(f);
     fclose(f);
 }
@@ -154,7 +179,7 @@ int main(int argc, char **argv)
 
     if (log.isOpen()) {
         std::ostringstream os;
-        os << "{\"ts\":\"" << nowIso() << "\",\"event\":\"start\","
+        os << envelope(cfg, "start", "compute", "info")
            << "\"num_particles\":" << cfg.num_particles << ","
            << "\"grid_dim\":" << cfg.grid_dim << ","
            << "\"timestep\":" << cfg.timestep << ","
@@ -172,12 +197,14 @@ int main(int argc, char **argv)
     std::vector<uint64_t> genHashes; // used only in --generate-golden mode
     unsigned long long totalIter = 0;
     unsigned long long epoch = 0;
+    unsigned long long seeEvents = 0; // # epochs with >=1 SEE (one-per-epoch count)
     int corruptionSeen = 0;
 
     while (!g_stop) {
         // Deterministic reset to the known initial state (srand(1973) inside).
         psystem.reset(ParticleSystem::CONFIG_GRID);
-        unsigned int stepIdx = 0; // index into the golden table within this epoch
+        unsigned int stepIdx = 0;  // index into the golden table within this epoch
+        bool epochAnomaly = false; // any anomaly this epoch -> counts as one SEE
 
         for (unsigned int step = 1; step <= E && !g_stop; step++) {
             psystem.update(cfg.timestep);
@@ -201,7 +228,7 @@ int main(int argc, char **argv)
                 }
 
                 bool anomaly = mismatch || !fin || (mAbs > 2.0f);
-                if (anomaly) corruptionSeen = 1;
+                if (anomaly) { corruptionSeen = 1; epochAnomaly = true; }
 
                 if (log.isOpen()) {
                     char hbuf[24], gbuf[24];
@@ -209,7 +236,7 @@ int main(int argc, char **argv)
                     unsigned long long gh = (haveGolden && stepIdx < golden.size()) ? golden[stepIdx] : 0ULL;
                     snprintf(gbuf, sizeof(gbuf), "%016llx", gh);
                     std::ostringstream os;
-                    os << "{\"ts\":\"" << nowIso() << "\",\"event\":\"checksum\","
+                    os << envelope(cfg, "checksum", "compute", anomaly ? "anomaly" : "ok")
                        << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ",\"step\":" << step << ","
                        << "\"hash\":\"" << hbuf << "\","
                        << "\"golden\":\"" << gbuf << "\","
@@ -221,9 +248,27 @@ int main(int argc, char **argv)
                     log.writeLine(os.str());
                 }
 
-                writeHeartbeat(cfg.heartbeat_path, totalIter, epoch, step);
+                writeHeartbeat(cfg.heartbeat_path, totalIter, epoch, step, seeEvents);
                 stepIdx++;
             }
+        }
+
+        // Count at most ONE SEE per epoch. Because each epoch resets to the
+        // golden initial state, a single upset early in an epoch makes every
+        // later checksum in that epoch mismatch too; counting raw mismatches
+        // would over-represent an early hit and under-represent a late one.
+        // Collapsing to one event per affected epoch removes that bias.
+        if (!generateGolden && epochAnomaly) {
+            seeEvents++;
+            if (log.isOpen()) {
+                std::ostringstream os;
+                os << envelope(cfg, "see_event", "compute", "anomaly")
+                   << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
+                   << "\"see_event\":true,\"see_count\":" << seeEvents << ","
+                   << metaFields(cfg) << "}";
+                log.writeLine(os.str());
+            }
+            writeHeartbeat(cfg.heartbeat_path, totalIter, epoch, E, seeEvents);
         }
 
         if (generateGolden) {
@@ -239,8 +284,9 @@ int main(int argc, char **argv)
 
     if (log.isOpen()) {
         std::ostringstream os;
-        os << "{\"ts\":\"" << nowIso() << "\",\"event\":\"stop\","
+        os << envelope(cfg, "stop", "compute", "info")
            << "\"total_iter\":" << totalIter << ",\"epochs\":" << epoch << ","
+           << "\"see_events\":" << seeEvents << ","
            << "\"corruption_seen\":" << (corruptionSeen ? "true" : "false") << ","
            << metaFields(cfg) << "}";
         log.writeLine(os.str());

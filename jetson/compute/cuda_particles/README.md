@@ -53,8 +53,22 @@ NaN/Inf or out-of-bounds positions are logged as secondary signals.
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
-Requires the JetPack CUDA toolkit. **Cannot be built off-target** (aarch64 / SM 8.7);
-the code here has not been compiled — it is written for the on-target build.
+Requires the JetPack CUDA toolkit. **Cannot be built off-target** (aarch64 / SM 8.7).
+Built and verified on the Orin Nano: a 6,064-epoch soak (0 anomalies) plus a 30k-iter
+re-verify after the schema-v1 logging change (golden matched, `see_events:0`, exit 0).
+
+## Log format (schema v1)
+Every JSONL record carries the shared envelope from `docs/EVENT_SCHEMA.md`:
+`schema_version:1`, `ts` (ISO-8601 UTC, ms), `run_id`, `jetson_id`, `channel:"compute"`,
+`event`, `status` (`ok`/`anomaly`/`info`), then the payload and beam/run metadata.
+Checksum records set `status:"anomaly"` on a mismatch/NaN/out-of-bounds, else `"ok"`.
+
+**SEE counter (one event per epoch).** A single upset early in an epoch makes every
+later checksum in that epoch mismatch too, so raw mismatch counts over-represent early
+hits. Instead, an epoch with **≥1** anomaly is collapsed to exactly one `see_event`
+record (`status:"anomaly"`, `see_event:true`, cumulative `see_count`) emitted at the
+epoch boundary. The running total is mirrored in `logs/heartbeat.txt` as `see_events`
+and in the `stop` record.
 
 ## What we changed vs. upstream
 - All OpenGL/GLUT/cuda_gl_interop code is behind `#ifdef PARTICLES_USE_GL`; the CUDA-only
