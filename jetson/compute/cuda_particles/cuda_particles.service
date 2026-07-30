@@ -4,9 +4,15 @@ After=multi-user.target
 
 [Service]
 Type=simple
-# Adjust WorkingDirectory / paths to the deployed location on the DUT.
-WorkingDirectory=/opt/see/cuda_particles
-ExecStart=/opt/see/cuda_particles/cuda_particles --config /opt/see/cuda_particles/config/particles.json
+# Matches the proven on-target deployment under the melagen home dir. For a
+# system-wide install, copy the tree to /opt/see/cuda_particles and update the
+# three paths + User below to taste.
+User=melagen
+WorkingDirectory=/home/melagen/cuda_particles
+ExecStart=/home/melagen/cuda_particles/build/cuda_particles --config /home/melagen/cuda_particles/config/particles.json
+# JetPack CUDA runtime (binary links libcudart from here).
+Environment=PATH=/usr/local/cuda/bin:/usr/bin:/bin
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
 Restart=always
 RestartSec=2
 # Exit code 2 (corruption observed) still restarts, but is recorded in the journal.
