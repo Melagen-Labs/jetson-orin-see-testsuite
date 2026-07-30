@@ -1,5 +1,21 @@
 # Jetson Orin Nano Proton Beam SEE Test — Software Build Plan
 This is a from-scratch, step-by-step build plan for the five-channel monitoring system, organized to match your table. GPU and CPU are split into two separate builds under the shared "GPU/CPU workload" row, as requested. The power row is written as a firmware/software interface spec for your EE rather than a hardware shopping list, since you already have hardware and don't want to source more.
+
+> **⚠️ Status (2026-07-30) — read before using this plan.** Only **§1a
+> `cuda_particles`** is built and verified on hardware (Jetson Orin Nano, CUDA
+> 12.6, SM 8.7): clean multi-epoch run with bit-exact determinism, plus
+> fault-injection detection. Its only remaining item is a ~1 hr on-target soak
+> and committing `data/golden_hashes.txt`. **Every other section below (1b, 1c,
+> 2, 3, 4, 5, and the shared arbiter in §0) is tentative and untested** —
+> written to this design but not yet compiled, run, or qualified on the DUT.
+> Build them out in the staged order below, bringing each to the same bar
+> (built → run on DUT → verified) before it is trusted.
+>
+> **Resolved decisions:** DUT = Jetson Orin Nano (SM 8.7, CUDA 12.6); primary GPU
+> detector = `cuda_particles` (gpu-burn secondary); result policy = **bit-exact**
+> (verified: zero false mismatches across epochs, so no tolerance mode needed).
+> Still open: shared JSONL schema freeze, memory budget, recovery policy, input
+> format, and per-repo ownership/deadlines (to be assigned at the 12:00 sync).
 ---
 ## 0. Shared architecture (build this first, everything else plugs into it)
 Two machines are involved:

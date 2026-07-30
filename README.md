@@ -13,11 +13,31 @@ abnormal power / candidate single-event latchup (SEL).
 The authoritative design document is **[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)** —
 every script and doc here is built to match it.
 
+## ⚠️ Component status (2026-07-30)
+
+**Only the CUDA particle workload is built and verified on hardware. Everything
+else in this repository is tentative and untested — scaffolding written to the
+design, not yet compiled/run/qualified on the DUT.** Do not treat the tentative
+components as working; they are a starting point for the staged build-out in
+[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md).
+
+| Component | Status |
+|---|---|
+| [`jetson/compute/cuda_particles/`](jetson/compute/cuda_particles/) — deterministic CUDA workload (primary GPU SEE detector) | ✅ **Built & verified on the Orin Nano** (clean multi-epoch run, bit-exact determinism, fault-injection detection). Remaining: ~1 hr soak + commit golden table. |
+| `jetson/vendor/gpu-burn` (secondary GPU stress) | 🟠 Tentative — not built/qualified on DUT |
+| `jetson/vendor/cuda_memtest` (GPU memory) | 🟠 Tentative — not built/qualified on DUT |
+| NASA SMRT (CPU/system RAM) | 🟠 Tentative — not vendored/qualified on DUT |
+| `jetson/compute/cpu_sort_check.py` (CPU workload) | 🟠 Tentative — not run on DUT |
+| `jetson/heartbeat/` + `arbiter/heartbeat_listener.py` | 🟠 Tentative — scaffolded, untested |
+| `jetson/boot_state/` + pstore/ramoops | 🟠 Tentative — scaffolded, untested |
+| `arbiter/` correlator, power reader, log pull | 🟠 Tentative — scaffolded, untested |
+| `firmware/` power board | 🟠 Tentative — owned by EE, not implemented here |
+
 ## Monitoring channels
 
 | # | Channel | DUT side | Arbiter side |
 |---|---------|----------|--------------|
-| 1 | GPU/CPU workload | `gpu-burn` (channel 1a, submodule + [patch notes](jetson/compute/gpu_burn_patch/README.md)) and [`cpu_sort_check.py`](jetson/compute/cpu_sort_check.py) (1b) | pulled compute logs |
+| 1 | GPU/CPU workload | ✅ **[`cuda_particles`](jetson/compute/cuda_particles/) (primary, verified)**; `gpu-burn` (secondary stress, 🟠 tentative) + [`cpu_sort_check.py`](jetson/compute/cpu_sort_check.py) (CPU, 🟠 tentative) | pulled compute logs |
 | 2 | Memory workload | NASA SMRT ([runbook](jetson/memory/run_smrt.md)) + cuda_memtest ([runbook](jetson/memory/run_cuda_memtest.md)) | pulled memory logs |
 | 3 | Heartbeat | watchdogd (local HW watchdog) + [`heartbeat_sender.py`](jetson/heartbeat/heartbeat_sender.py) (external UDP) | [`heartbeat_listener.py`](arbiter/heartbeat_listener.py) |
 | 4 | Boot-state | [`boot_state_logger.py`](jetson/boot_state/boot_state_logger.py) + kernel pstore/ramoops ([setup](docs/PSTORE_SETUP.md)) | pulled boot-state logs + pstore |
