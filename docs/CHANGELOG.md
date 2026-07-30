@@ -15,6 +15,21 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### `cuda_particles`: unify SEE field name + document counting semantics
+
+- **`c33c01f` — cuda_particles: rename `see_count`→`see_events`, document SEE counting**
+  - `jetson/compute/cuda_particles/particles_main.cpp`: the `see_event` record's
+    field renamed `see_count` → **`see_events`** (now matches the heartbeat and
+    `stop` field — one name everywhere). Expanded the epoch-boundary comment to
+    state the semantics explicitly: `see_events` counts **epochs containing ≥1
+    SEE, not the total number of SEEs** (an upset early in an epoch corrupts the
+    state all later steps build on, so raw mismatches would over-count early hits);
+    the undercount when two SEEs share an epoch is ~`(rate × epoch_seconds)/2`,
+    negligible at the low fluxes SEE testing runs at.
+  - `jetson/compute/cuda_particles/README.md`: log-format note updated to `see_events`.
+  - **Verified on-target:** rebuilt on the Orin Nano; 5k-iter run, exit 0, no
+    `see_count` present, `see_events:0` in the stop record + heartbeat.
+
 ### `cuda_particles` Stage 1 completion + docs (verified on the Orin Nano)
 
 - **`4c8db4a` — BUILD_PLAN: mark §1a fully qualified, §5a schema frozen at v1**

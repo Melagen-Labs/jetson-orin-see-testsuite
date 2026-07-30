@@ -253,18 +253,34 @@ int main(int argc, char **argv)
             }
         }
 
-        // Count at most ONE SEE per epoch. Because each epoch resets to the
-        // golden initial state, a single upset early in an epoch makes every
-        // later checksum in that epoch mismatch too; counting raw mismatches
-        // would over-represent an early hit and under-represent a late one.
-        // Collapsing to one event per affected epoch removes that bias.
+        // SEE COUNTING SEMANTICS -- read before using see_events for a cross
+        // section. `see_events` is the number of EPOCHS that contained at least
+        // one SEE, NOT the total number of SEEs. The two differ only when two
+        // upsets land in the same epoch, which we deliberately collapse to one.
+        //
+        // Why count epochs instead of raw mismatches: each epoch resets to the
+        // golden initial state, so a single upset EARLY in an epoch corrupts the
+        // state that every later step builds on -- all subsequent checksums in
+        // that epoch then mismatch too. Counting raw mismatches would therefore
+        // score an early hit as many "events" and a late hit as one, purely by
+        // position. Collapsing to one event per affected epoch removes that bias
+        // and makes each affected epoch worth exactly one SEE.
+        //
+        // The tradeoff: if two independent SEEs occur within the SAME epoch we
+        // undercount by one. That is acceptable ONLY while the beam flux is kept
+        // low enough that <=1 SEE per epoch (~0.7 s of wall clock) is the norm
+        // -- i.e. events spaced seconds-to-minutes apart. At those rates the
+        // double-in-one-epoch fraction is ~ (rate * epoch_seconds) / 2, a
+        // sub-percent correction. Monitor the live see_events rate and keep the
+        // flux there; if you must run hotter, shorten epoch_iterations so the
+        // epoch window stays short relative to the mean time between events.
         if (!generateGolden && epochAnomaly) {
             seeEvents++;
             if (log.isOpen()) {
                 std::ostringstream os;
                 os << envelope(cfg, "see_event", "compute", "anomaly")
                    << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
-                   << "\"see_event\":true,\"see_count\":" << seeEvents << ","
+                   << "\"see_event\":true,\"see_events\":" << seeEvents << ","
                    << metaFields(cfg) << "}";
                 log.writeLine(os.str());
             }

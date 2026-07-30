@@ -66,7 +66,7 @@ Checksum records set `status:"anomaly"` on a mismatch/NaN/out-of-bounds, else `"
 **SEE counter (one event per epoch).** A single upset early in an epoch makes every
 later checksum in that epoch mismatch too, so raw mismatch counts over-represent early
 hits. Instead, an epoch with **≥1** anomaly is collapsed to exactly one `see_event`
-record (`status:"anomaly"`, `see_event:true`, cumulative `see_count`) emitted at the
+record (`status:"anomaly"`, `see_event:true`, cumulative `see_events`) emitted at the
 epoch boundary. The running total is mirrored in `logs/heartbeat.txt` as `see_events`
 and in the `stop` record.
 
