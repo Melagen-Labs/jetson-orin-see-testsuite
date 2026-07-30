@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### `cuda_particles` README: document epoch-length tuning for SEE pile-up
 
-- **`PENDING2` — README: how/where to tune `epoch_iterations`**
+- **`a0d1dcb` — README: how/where to tune `epoch_iterations`**
   - `jetson/compute/cuda_particles/README.md`: added a "Tuning the epoch length"
     section — lower **`epoch_iterations`** in `config/particles.json` to shorten
     the ~0.66 s epoch window and cut the odds of two SEEs per epoch; keep mean
