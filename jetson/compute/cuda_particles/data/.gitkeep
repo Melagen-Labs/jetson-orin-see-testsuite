@@ -1,0 +1,3 @@
+# Keeps the data/ directory in the repo. The golden table
+# (golden_hashes.txt) is git-ignored and generated per board
+# (scripts/setup-board.sh --generate-golden writes it here).
