@@ -15,6 +15,25 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### control: align test-control port to 6000 + accept coordinator STOP_TEST
+
+- **`<pending>` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md, INTEGRATION_TEST.md**
+  - Verified our DUT receiver against the real coordinator repo
+    (`madhavsharma01312003/melagen-test-coordinator`, not ours — read-only). Its
+    `config.example.json` uses **`jetson_port: 6000`**, so the DUT now listens on
+    **6000** (was 5599) in both the config and the `DEFAULTS`.
+  - Confirmed our reply already satisfies the coordinator's transport: it sends
+    newline-terminated JSON and **hard-validates the reply's `request_id` matches**
+    the request (it does *not* check `status`); our receiver already echoes
+    `request_id` and terminates the reply with `\n`, so no wire change was needed.
+  - The coordinator's `StopTestRequest` carries an extra **`target_request_id`**
+    (its own `request_id` is a fresh uuid). Our `validate()` already tolerates the
+    unknown field; we now also log `target_request_id` on STOP so a stop can be
+    correlated to its start. STOP still stops all channels.
+  - Docs/memory updated: port 6000 marked **confirmed** (no longer an open item);
+    noted the coordinator repo implements neither heartbeat nor log-pull (those are
+    Madhav's separate heartbeat monitor and Ansh's `pull_logs.sh`).
+
 ### docs: add INTEGRATION_TEST.md (DUT↔arbiter over-Ethernet runbook)
 
 - **`ffcc155` — docs/INTEGRATION_TEST.md (new)**

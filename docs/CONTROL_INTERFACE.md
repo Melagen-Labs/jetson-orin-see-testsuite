@@ -7,14 +7,18 @@ run as the `test_control.service` systemd unit.
 
 ## Wire contract
 
-**Transport:** TCP. The DUT listens on `listen_port` (default **5599**); the
+**Transport:** TCP. The DUT listens on `listen_port` (default **6000**); the
 arbiter opens a connection, sends one JSON object, reads one JSON reply, closes.
 Pretty-printed or compact JSON both work (the receiver reads until one complete
 object has arrived).
 
-> **Transport confirmed: TCP** (the test coordinator uses TCP; the heartbeat
-> monitor uses UDP). The **port** (5599) is still ours to align with the arbiter
-> author — confirm the sender connects to the same port.
+> **Verified against the real coordinator** (`madhavsharma01312003/melagen-test-coordinator`):
+> transport is **TCP** on **port 6000** (`jetson_port` in its `config.example.json`).
+> The coordinator sends newline-terminated JSON and reads the reply with
+> `readline`, and it **hard-validates that the reply's `request_id` matches** the
+> request — our receiver already echoes `request_id` and terminates the reply with
+> `\n`, so it interoperates. (Heartbeat is a separate UDP channel; the coordinator
+> repo does not implement heartbeat or log-pull.)
 
 ### Request (arbiter → DUT)
 
@@ -83,11 +87,12 @@ so an arbiter retry can't double-start.
 
 ## STOP_TEST — our forward-compatible extension
 
-The arbiter's published `SUPPORTED_COMMAND` is currently only `START_TEST`. Since
-the button is start/**stop**, the receiver also accepts `STOP_TEST` (needs only
-`protocol_version`, `command`, `request_id`, `sent_at_utc`): it **removes each
-`ARMED` flag and `systemctl stop`s each channel**. For the stop button to reach
-us, the arbiter author just needs to send a `STOP_TEST` message in the same shape.
+The receiver accepts `STOP_TEST` (needs `protocol_version`, `command`,
+`request_id`, `sent_at_utc`): it **removes each `ARMED` flag and `systemctl stop`s
+each channel**. The coordinator's `StopTestRequest` also carries a
+**`target_request_id`** (the START it cancels; its own `request_id` is a fresh
+uuid) — we accept that extra field, stop all channels regardless, and log
+`target_request_id` so a stop can be correlated to its start.
 
 ## Metadata note (campaign vs dev)
 
@@ -111,7 +116,7 @@ systemctl status test_control.service --no-pager
 Verify it's listening and watch commands arrive:
 
 ```bash
-sudo ss -ltnp | grep 5599
+sudo ss -ltnp | grep 6000
 tail -f ~/see-testsuite/jetson/control/logs/test_control.jsonl
 ```
 

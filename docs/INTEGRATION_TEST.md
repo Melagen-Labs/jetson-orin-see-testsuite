@@ -5,7 +5,7 @@ direct Ethernet cable. The three DUT↔arbiter interfaces are exercised:
 
 | Interface | Direction | Transport / port |
 |---|---|---|
-| Test-control (start/stop) | arbiter → DUT | **TCP 5599** |
+| Test-control (start/stop) | arbiter → DUT | **TCP 6000** |
 | Heartbeat (liveness) | DUT → arbiter | **UDP 5555** |
 | Log pull | arbiter → DUT | **SSH/rsync** (user `radpull`) |
 
@@ -75,7 +75,7 @@ sudo ip link set <ethX> up
 ```
 Both must reply before continuing.
 
-## Phase 2 — Test-control (arbiter → DUT, TCP 5599)
+## Phase 2 — Test-control (arbiter → DUT, TCP 6000)
 
 > **Windows quoting gotcha:** `python -c '...'` in PowerShell strips the double
 > quotes out of the JSON. Write the script to a file instead (the closing `'@`
@@ -93,7 +93,7 @@ msg = {
     "shielding_thickness_mm": 12,      # 8 | 12 | 16
     "sent_at_utc": "2026-07-31T12:00:00.000Z",
 }
-s = socket.create_connection(("192.168.1.20", 5599), timeout=5)
+s = socket.create_connection(("192.168.1.20", 6000), timeout=5)
 s.sendall(json.dumps(msg).encode())
 print("REPLY:", s.recv(4096).decode())
 '@ | Set-Content -Encoding ascii send_test.py
@@ -178,6 +178,13 @@ Jetson (only if reverting the wired port): `sudo nmcli con down radtest-eth`. Th
 `radtest-eth` static profile is harmless to leave in place for future runs.
 
 ## Open items with teammates
-- Confirm control **port 5599** with Madhav; have him send **STOP_TEST**.
-- Set the DUT heartbeat `--arbiter-ip` to the real arbiter's Ethernet IP.
-- Install the **arbiter's SSH public key** into `radpull` for Phase 4.
+- ~~Confirm control port~~ — **confirmed TCP 6000** from the coordinator repo
+  (`melagen-test-coordinator`, `jetson_port`). DUT now listens on 6000.
+- Have Madhav point the coordinator's `jetson_host` at the DUT's Ethernet IP
+  (`192.168.1.20`) — its `config.example.json` currently uses the Tailscale IP —
+  and press **START_TEST** / **STOP_TEST** for the live Phase 5 run.
+- Set the DUT heartbeat `--arbiter-ip` to the real arbiter's Ethernet IP. (The
+  coordinator repo itself does not implement heartbeat — that's Madhav's separate
+  `melagen-jetson-heartbeat` monitor.)
+- Phase 4 log-pull is **not** part of the coordinator repo — it's Ansh's
+  `arbiter/pull_logs.sh`. Still needs the **arbiter's SSH public key** in `radpull`.

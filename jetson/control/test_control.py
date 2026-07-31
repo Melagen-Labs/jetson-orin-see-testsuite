@@ -28,9 +28,10 @@ Behaviour:
     (not just start) so a START with new beam params re-applies them even if a
     test is already running.
   * STOP_TEST  -> remove each ARMED flag; `systemctl stop` each channel service.
-    This is our forward-compatible extension: the arbiter contract currently
-    lists only START_TEST, so STOP_TEST is accepted here but the sender must
-    emit it for the stop button to reach us.
+    The coordinator (melagen-test-coordinator) sends STOP_TEST with an extra
+    `target_request_id` (the START it cancels; its own `request_id` is a fresh
+    uuid). We stop all channels regardless and just log `target_request_id`; the
+    unknown field is accepted, not rejected.
 
 Runs as root (systemd unit) so it can control the services and write the flags.
 Standard library only -- no third-party deps. Transport is TCP; if the arbiter
@@ -54,7 +55,7 @@ from datetime import datetime, timezone
 
 DEFAULTS = {
     "listen_host": "0.0.0.0",         # bind all interfaces (direct arbiter link)
-    "listen_port": 5599,              # TCP port the arbiter connects to
+    "listen_port": 6000,              # TCP port the arbiter connects to (coordinator's jetson_port)
     "allowed_peers": [],              # [] = accept any source IP; else allow-list
     "read_timeout_s": 5.0,            # per-connection read timeout
     "max_msg_bytes": 65536,           # reject absurdly large payloads
@@ -273,7 +274,11 @@ def handle_message(raw, cfg, state, lock):
         reply.update(status="ok" if all_ok else "error",
                      detail="stopped" if all_ok else "one or more channels failed",
                      channels=results)
+        # target_request_id: the coordinator's STOP_TEST names which START to stop
+        # (its own request_id is a fresh uuid). We stop all channels regardless, but
+        # log it so a stop can be correlated back to its start.
         log_control(cfg, {"event": "stop_test", "request_id": msg["request_id"],
+                          "target_request_id": msg.get("target_request_id"),
                           "channels": results, "ok": all_ok})
 
     with lock:
