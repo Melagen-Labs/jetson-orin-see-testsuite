@@ -58,6 +58,10 @@ void getF(const std::string &j, const char *key, float &dst)
 {
     std::string v; if (findValue(j, key, v)) dst = strtof(v.c_str(), nullptr);
 }
+void getB(const std::string &j, const char *key, bool &dst)
+{
+    std::string v; if (findValue(j, key, v)) dst = (v == "true" || v == "1");
+}
 
 } // namespace
 
@@ -77,6 +81,7 @@ bool loadConfig(const std::string &path, Config &out)
     getULL(j, "iterations",        out.iterations);
     getU  (j, "seed",              out.seed);
     getStr(j, "tolerance_mode",    out.tolerance_mode);
+    getB  (j, "save_see_epochs",   out.save_see_epochs);
 
     getStr(j, "log_dir",           out.log_dir);
     getStr(j, "golden_path",       out.golden_path);

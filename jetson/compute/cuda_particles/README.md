@@ -63,12 +63,28 @@ Every JSONL record carries the shared envelope from `docs/EVENT_SCHEMA.md`:
 `event`, `status` (`ok`/`anomaly`/`info`), then the payload and beam/run metadata.
 Checksum records set `status:"anomaly"` on a mismatch/NaN/out-of-bounds, else `"ok"`.
 
-**SEE counter (one event per epoch).** A single upset early in an epoch makes every
-later checksum in that epoch mismatch too, so raw mismatch counts over-represent early
-hits. Instead, an epoch with **≥1** anomaly is collapsed to exactly one `see_event`
-record (`status:"anomaly"`, `see_event:true`, cumulative `see_events`) emitted at the
-epoch boundary. The running total is mirrored in `logs/heartbeat.txt` as `see_events`
-and in the `stop` record.
+**Detection = final checkpoint only.** Because every epoch resets to the golden state,
+a single upset cascades to the end, so only the **last** checkpoint's hash is compared
+to the golden's last hash. An epoch that mismatches (or goes NaN/out-of-bounds) is one
+`see_event` (`status:"anomaly"`, cumulative `see_events`, mirrored in `heartbeat.txt`
+and the `stop` record). Intermediate checkpoints aren't compared — they're only buffered
+for the dump below.
+
+**SEE state dump (offline reconstruction).** On a flagged epoch, the buffered
+per-checkpoint trajectory is written to the SSD at
+`logs/see_dumps/epoch_<N>_iter_<M>.bin` — raw float32, `dump_checkpoints ×
+[pos(count) + vel(count)]` — and the `see_event` record carries `dump`,
+`dump_checkpoints`, `dump_stride`, `num_particles`, `floats_per_checkpoint`. A reference
+Orin can replay the corrupted state forward and count grouped SEEs (see BUILD_PLAN §1a).
+Gated by `save_see_epochs` (default true). The arbiter pulls `logs/` over Ethernet
+(tentative until wired); the data is on the SSD regardless.
+
+**Crash handling.** A `logs/running.flag` marker is held while running and removed on a
+clean stop. If it's present at startup, the prior instance died abnormally (CUDA abort,
+segfault, hang→reboot, power) → logged as a `sim_fault`/`crash` SEE. CUDA errors caught
+at the checkpoint memcpy are logged (`sim_fault`/`crash` + `cudaGetErrorString`), dumped,
+and exit 2 so `cuda_particles.service` (`Restart=always`, `StartLimitIntervalSec=0`,
+`RestartSec=1`) relaunches within ~1 s.
 
 ## Tuning the epoch length (SEE pile-up control)
 Because `see_events` counts *epochs with ≥1 SEE* (not raw upsets), two SEEs in the same

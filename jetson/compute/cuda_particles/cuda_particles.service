@@ -1,6 +1,9 @@
 [Unit]
 Description=CUDA particles deterministic SEE workload (Jetson Orin Nano)
 After=multi-user.target
+# Crashes are expected DATA during a beam run, so never stop restarting: disable
+# systemd's start-rate limiter (default gives up after 5 restarts in 10 s).
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -21,7 +24,7 @@ ExecStart=/home/melagen/see-testsuite/jetson/compute/cuda_particles/build/cuda_p
 Environment=PATH=/usr/local/cuda/bin:/usr/bin:/bin
 Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
 Restart=always
-RestartSec=2
+RestartSec=1
 # Exit code 2 (corruption observed) still restarts, but is recorded in the journal.
 StandardOutput=journal
 StandardError=journal

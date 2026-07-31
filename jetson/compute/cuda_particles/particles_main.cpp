@@ -29,7 +29,8 @@
 #include <string>
 #include <vector>
 
-#include <unistd.h>   // gethostname (fleet jetson_id "auto")
+#include <unistd.h>     // gethostname (fleet jetson_id "auto")
+#include <sys/stat.h>   // mkdir (see_dumps/ directory)
 
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
@@ -127,6 +128,21 @@ static void writeHeartbeat(const std::string &path, unsigned long long totalIter
     fclose(f);
 }
 
+// Write a SEE-epoch state dump: raw little-endian float32, laid out as
+// nCheckpoints x [pos(count floats) then vel(count floats)]. The companion
+// see_event JSONL record carries the shape (dump_checkpoints, dump_stride,
+// num_particles, floats_per_checkpoint) so an offline reconstruction on a
+// reference Orin can load and replay it. Returns true on a full write.
+static bool writeSeeDump(const std::string &path, const std::vector<float> &snap,
+                         size_t nFloats)
+{
+    FILE *f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    size_t w = fwrite(snap.data(), sizeof(float), nFloats, f);
+    fclose(f);
+    return w == nFloats;
+}
+
 int main(int argc, char **argv)
 {
     std::string configPath = "config/particles.json";
@@ -186,6 +202,34 @@ int main(int argc, char **argv)
     signal(SIGTERM, handleSignal);
     signal(SIGINT, handleSignal);
 
+    // Crash / unclean-shutdown detection (marker on the SSD). We hold a marker
+    // file while running and remove it on a clean stop; if it is still present
+    // at startup, the previous instance died WITHOUT a clean stop -- a CUDA
+    // abort, segfault, hang->watchdog reboot, or power loss. During a beam run
+    // that is itself a candidate SEE, so we flag it here as a crash. The systemd
+    // unit (Restart=always, StartLimitIntervalSec=0) relaunches us within ~1 s;
+    // the arbiter later pulls logs/ (incl. see_dumps/) over Ethernet -- both are
+    // tentative until the Ethernet link is wired, but the data is on the SSD now.
+    const std::string runFlag = cfg.log_dir + "/running.flag";
+    if (!generateGolden) {
+        std::ifstream prev(runFlag.c_str());
+        std::string prevInfo;
+        if (prev.good() && std::getline(prev, prevInfo) && log.isOpen()) {
+            std::ostringstream os;
+            os << envelope(cfg, "sim_fault", "compute", "crash")
+               << "\"see_event\":true,\"reason\":\"unclean_restart\","
+               << "\"prev_run\":\"" << jsonEscape(prevInfo) << "\","
+               << metaFields(cfg) << "}";
+            log.writeLine(os.str());
+        }
+        prev.close();
+        FILE *rf = fopen(runFlag.c_str(), "w");
+        if (rf) {
+            fprintf(rf, "{\"pid\":%d,\"start\":\"%s\"}\n", (int)getpid(), nowIso().c_str());
+            fclose(rf);
+        }
+    }
+
     if (log.isOpen()) {
         std::ostringstream os;
         os << envelope(cfg, "start", "compute", "info")
@@ -202,6 +246,17 @@ int main(int argc, char **argv)
 
     const unsigned int K = cfg.checksum_interval ? cfg.checksum_interval : 1;
     const unsigned int E = cfg.epoch_iterations ? cfg.epoch_iterations : K;
+    const unsigned int nCk = K ? (E / K) : 0;   // checkpoints per epoch
+
+    // Per-checkpoint state buffer, reused every epoch. On a detected SEE we write
+    // this whole trajectory to <log_dir>/see_dumps/ for offline reconstruction.
+    const bool saveDumps = !generateGolden && cfg.save_see_epochs && nCk > 0;
+    const std::string dumpDir = cfg.log_dir + "/see_dumps";
+    std::vector<float> snap;
+    if (saveDumps) {
+        snap.resize((size_t)nCk * 2 * count);
+        mkdir(dumpDir.c_str(), 0755);           // ignore EEXIST
+    }
 
     std::vector<uint64_t> genHashes; // used only in --generate-golden mode
     unsigned long long totalIter = 0;
@@ -212,8 +267,9 @@ int main(int argc, char **argv)
     while (!g_stop) {
         // Deterministic reset to the known initial state (srand(1973) inside).
         psystem.reset(ParticleSystem::CONFIG_GRID);
-        unsigned int stepIdx = 0;  // index into the golden table within this epoch
-        bool epochAnomaly = false; // any anomaly this epoch -> counts as one SEE
+        unsigned int capturedCk = 0;   // checkpoints buffered this epoch
+        bool epochAnomaly = false;     // final checksum mismatch/NaN/oob -> one SEE
+        char hbuf[24] = "0", gbuf[24] = "0";  // final hash / golden (for see_event)
 
         for (unsigned int step = 1; step <= E && !g_stop; step++) {
             psystem.update(cfg.timestep);
@@ -222,74 +278,114 @@ int main(int argc, char **argv)
             if (cfg.iterations && totalIter >= cfg.iterations) g_stop = 1;
 
             if (step % K == 0) {
-                checkCudaErrors(cudaMemcpy(hPos.data(), psystem.getCudaPosVBO(), nBytes, cudaMemcpyDeviceToHost));
-                checkCudaErrors(cudaMemcpy(hVel.data(), psystem.getCudaVel(),    nBytes, cudaMemcpyDeviceToHost));
-
-                uint64_t h    = hashState(hPos.data(), count, hVel.data(), count);
-                bool     fin  = allFinite(hPos.data(), count) && allFinite(hVel.data(), count);
-                float    mAbs = maxAbs(hPos.data(), count);
-
-                bool mismatch = false;
-                if (generateGolden) {
-                    genHashes.push_back(h);
-                } else if (haveGolden && stepIdx < golden.size()) {
-                    mismatch = (h != golden[stepIdx]);
+                // The checkpoint memcpy is our natural GPU sync point, so a
+                // CUDA fault (often an SEE that crashed a kernel) surfaces here.
+                // Catch it gracefully instead of aborting: flag a crash SEE with
+                // the error text, dump what we buffered, and exit 2 so systemd
+                // restarts us fast to keep the test going.
+                cudaError_t ce = cudaMemcpy(hPos.data(), psystem.getCudaPosVBO(), nBytes, cudaMemcpyDeviceToHost);
+                if (ce == cudaSuccess)
+                    ce = cudaMemcpy(hVel.data(), psystem.getCudaVel(), nBytes, cudaMemcpyDeviceToHost);
+                if (ce != cudaSuccess) {
+                    seeEvents++;
+                    std::string dumpRel;
+                    if (saveDumps && capturedCk > 0) {
+                        char name[64];
+                        snprintf(name, sizeof(name), "epoch_%llu_iter_%llu_fault.bin",
+                                 (unsigned long long)epoch, (unsigned long long)totalIter);
+                        if (writeSeeDump(dumpDir + "/" + name, snap, (size_t)capturedCk * 2 * count))
+                            dumpRel = std::string("see_dumps/") + name;
+                    }
+                    if (log.isOpen()) {
+                        std::ostringstream os;
+                        os << envelope(cfg, "sim_fault", "compute", "crash")
+                           << "\"see_event\":true,\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
+                           << "\"error\":\"" << jsonEscape(cudaGetErrorString(ce)) << "\","
+                           << "\"dump\":\"" << jsonEscape(dumpRel) << "\","
+                           << "\"dump_checkpoints\":" << capturedCk << ",\"dump_stride\":" << K << ","
+                           << "\"num_particles\":" << cfg.num_particles << ","
+                           << metaFields(cfg) << "}";
+                        log.writeLine(os.str());
+                    }
+                    remove(runFlag.c_str());   // we logged it -> clean exit for restart
+                    return 2;
                 }
 
-                bool anomaly = mismatch || !fin || (mAbs > 2.0f);
-                if (anomaly) { corruptionSeen = 1; epochAnomaly = true; }
-
-                if (log.isOpen()) {
-                    char hbuf[24], gbuf[24];
-                    snprintf(hbuf, sizeof(hbuf), "%016llx", (unsigned long long)h);
-                    unsigned long long gh = (haveGolden && stepIdx < golden.size()) ? golden[stepIdx] : 0ULL;
-                    snprintf(gbuf, sizeof(gbuf), "%016llx", gh);
-                    std::ostringstream os;
-                    os << envelope(cfg, "checksum", "compute", anomaly ? "anomaly" : "ok")
-                       << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ",\"step\":" << step << ","
-                       << "\"hash\":\"" << hbuf << "\","
-                       << "\"golden\":\"" << gbuf << "\","
-                       << "\"mismatch\":" << (mismatch ? "true" : "false") << ","
-                       << "\"finite\":" << (fin ? "true" : "false") << ","
-                       << "\"max_abs_pos\":" << mAbs << ","
-                       << "\"anomaly\":" << (anomaly ? "true" : "false") << ","
-                       << metaFields(cfg) << "}";
-                    log.writeLine(os.str());
+                if (generateGolden) {
+                    // Golden generation hashes EVERY checkpoint (writes the full
+                    // table); runtime detection below compares only the last one.
+                    genHashes.push_back(hashState(hPos.data(), count, hVel.data(), count));
+                } else {
+                    // Buffer this checkpoint's full state for a possible SEE dump.
+                    if (saveDumps && capturedCk < nCk) {
+                        float *dst = snap.data() + (size_t)capturedCk * 2 * count;
+                        memcpy(dst,         hPos.data(), nBytes);
+                        memcpy(dst + count, hVel.data(), nBytes);
+                        capturedCk++;
+                    }
+                    // DETECTION: only the FINAL checkpoint of the epoch is compared
+                    // to the golden's last hash. Any earlier upset cascades to the
+                    // end, so the final hash still flags the epoch as anomalous.
+                    if ((step + K > E) && haveGolden && !golden.empty()) {
+                        uint64_t h    = hashState(hPos.data(), count, hVel.data(), count);
+                        bool     fin  = allFinite(hPos.data(), count) && allFinite(hVel.data(), count);
+                        float    mAbs = maxAbs(hPos.data(), count);
+                        uint64_t gh   = golden.back();
+                        bool mismatch = (h != gh);
+                        bool anomaly  = mismatch || !fin || (mAbs > 2.0f);
+                        if (anomaly) { corruptionSeen = 1; epochAnomaly = true; }
+                        snprintf(hbuf, sizeof(hbuf), "%016llx", (unsigned long long)h);
+                        snprintf(gbuf, sizeof(gbuf), "%016llx", (unsigned long long)gh);
+                        if (log.isOpen()) {
+                            std::ostringstream os;
+                            os << envelope(cfg, "checksum", "compute", anomaly ? "anomaly" : "ok")
+                               << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ",\"step\":" << step << ","
+                               << "\"hash\":\"" << hbuf << "\",\"golden\":\"" << gbuf << "\","
+                               << "\"mismatch\":" << (mismatch ? "true" : "false") << ","
+                               << "\"finite\":" << (fin ? "true" : "false") << ","
+                               << "\"max_abs_pos\":" << mAbs << ","
+                               << "\"anomaly\":" << (anomaly ? "true" : "false") << ","
+                               << metaFields(cfg) << "}";
+                            log.writeLine(os.str());
+                        }
+                    }
                 }
 
                 writeHeartbeat(cfg.heartbeat_path, totalIter, epoch, step, seeEvents);
-                stepIdx++;
             }
         }
 
-        // SEE COUNTING SEMANTICS -- read before using see_events for a cross
-        // section. `see_events` is the number of EPOCHS that contained at least
-        // one SEE, NOT the total number of SEEs. The two differ only when two
-        // upsets land in the same epoch, which we deliberately collapse to one.
-        //
-        // Why count epochs instead of raw mismatches: each epoch resets to the
-        // golden initial state, so a single upset EARLY in an epoch corrupts the
-        // state that every later step builds on -- all subsequent checksums in
-        // that epoch then mismatch too. Counting raw mismatches would therefore
-        // score an early hit as many "events" and a late hit as one, purely by
-        // position. Collapsing to one event per affected epoch removes that bias
-        // and makes each affected epoch worth exactly one SEE.
-        //
-        // The tradeoff: if two independent SEEs occur within the SAME epoch we
-        // undercount by one. That is acceptable ONLY while the beam flux is kept
-        // low enough that <=1 SEE per epoch (~0.7 s of wall clock) is the norm
-        // -- i.e. events spaced seconds-to-minutes apart. At those rates the
-        // double-in-one-epoch fraction is ~ (rate * epoch_seconds) / 2, a
-        // sub-percent correction. Monitor the live see_events rate and keep the
-        // flux there; if you must run hotter, shorten epoch_iterations so the
-        // epoch window stays short relative to the mean time between events.
+        // One SEE per affected epoch (final-checkpoint detection). Because each
+        // epoch resets to the golden initial state, a single upset cascades to
+        // the final hash, so comparing only the last checkpoint is enough to flag
+        // the epoch -- but it cannot tell 1 SEE from 2. To recover that, on a flag
+        // we DUMP this epoch's buffered per-checkpoint trajectory to see_dumps/;
+        // an offline reconstruction on a reference Orin replays the corrupted
+        // state forward and counts further, unexplained divergences. Keep the
+        // beam flux low enough that grouped SEEs stay rare (see BUILD_PLAN 1a).
         if (!generateGolden && epochAnomaly) {
             seeEvents++;
+            std::string dumpRel;
+            if (saveDumps && capturedCk > 0) {
+                char name[64];
+                snprintf(name, sizeof(name), "epoch_%llu_iter_%llu.bin",
+                         (unsigned long long)epoch, (unsigned long long)totalIter);
+                if (writeSeeDump(dumpDir + "/" + name, snap, (size_t)capturedCk * 2 * count))
+                    dumpRel = std::string("see_dumps/") + name;
+                else
+                    fprintf(stderr, "[cuda_particles] WARNING: failed to write SEE dump %s\n", name);
+            }
             if (log.isOpen()) {
                 std::ostringstream os;
                 os << envelope(cfg, "see_event", "compute", "anomaly")
                    << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
                    << "\"see_event\":true,\"see_events\":" << seeEvents << ","
+                   << "\"hash\":\"" << hbuf << "\",\"golden\":\"" << gbuf << "\","
+                   << "\"dump\":\"" << jsonEscape(dumpRel) << "\","
+                   << "\"dump_checkpoints\":" << capturedCk << ","
+                   << "\"dump_stride\":" << K << ","
+                   << "\"num_particles\":" << cfg.num_particles << ","
+                   << "\"floats_per_checkpoint\":" << (unsigned long long)(2 * count) << ","
                    << metaFields(cfg) << "}";
                 log.writeLine(os.str());
             }
@@ -316,6 +412,10 @@ int main(int argc, char **argv)
            << metaFields(cfg) << "}";
         log.writeLine(os.str());
     }
+
+    // Clean stop -> remove the run marker so the next start is not flagged as a
+    // crash. (An abnormal death leaves it, and the next start flags the crash.)
+    remove(runFlag.c_str());
 
     // Nonzero exit (2) if any corruption/anomaly was observed, so the arbiter /
     // systemd can distinguish a clean stop from a suspect run.

@@ -20,6 +20,11 @@ struct Config {
     // "invariant" -> only NaN/Inf + bounds checks, no golden comparison
     std::string        tolerance_mode    = "bitexact";
 
+    // On an epoch whose FINAL checksum mismatches the golden (a detected SEE),
+    // dump that epoch's buffered per-checkpoint state to <log_dir>/see_dumps/ so
+    // it can be reconstructed offline on a reference Orin. See BUILD_PLAN 1a.
+    bool               save_see_epochs   = true;
+
     // --- paths ---
     std::string        log_dir           = "./logs";
     std::string        golden_path       = "./data/golden_hashes.txt";
