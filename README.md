@@ -1,101 +1,164 @@
-\# Melagen Test Coordinator
+# Melagen Test Coordinator
 
+Laptop-side operator interface and TCP receiver prototype for preparing, transmitting, validating, and logging Jetson proton-test control commands.
 
+## Current capabilities
 
-Laptop-side operator interface for preparing and transmitting Jetson proton-test configurations.
+- Tkinter operator GUI with controlled parameter selections
+- Beam energy options: 53, 100, and 200 MeV
+- Shielding materials: Aluminium, MLC1, and MLC2
+- Shielding thicknesses: 8, 12, and 16 mm
+- `START_TEST` and `STOP_TEST` commands
+- Coordinator states: `IDLE`, `STARTING`, `ACTIVE`, and `STOPPING`
+- Operator confirmation before command transmission
+- Input validation and protocol-version checks
+- Unique UUID request identifiers and UTC timestamps
+- Mock transport for GUI-only testing
+- TCP transport for laptop-to-receiver communication
+- Stateful receiver that permits one active test at a time
+- Start/Stop correlation through `request_id` and `target_request_id`
+- Structured JSONL event logging on both coordinator and receiver sides
+- Automated unit tests for requests, transports, receiver behavior, and event logging
 
+## Current status and limitations
 
+The coordinator can prepare, validate, send, acknowledge, and log test-control requests in mock mode or through the included TCP receiver.
 
-\## Current capabilities
+The receiver currently validates commands and updates an in-memory active-test state. It does **not** start or stop a CUDA workload, execute arbitrary shell commands, reboot the Jetson, control beam hardware, or initiate a physical proton test.
 
+Communication with the Jetson over direct Ethernet or Tailscale has not yet been validated in this repository. Receiver state is also not restored after a receiver restart.
 
+## Protocol overview
 
-\- Tkinter GUI with controlled dropdown selections
+The GUI sends one newline-delimited UTF-8 JSON object over TCP. The receiver returns one JSON acknowledgment and closes the connection.
 
-\- Beam energy options: 53, 100, and 200 MeV
-
-\- Shielding materials: Aluminium, MLC1, and MLC2
-
-\- Shielding thicknesses: 8, 12, and 16 mm
-
-\- Input validation
-
-\- Unique request identifiers
-
-\- UTC timestamps
-
-\- JSON request generation
-
-\- Operator confirmation dialog
-
-\- Mock transport
-
-\- Local TCP receiver and acknowledgment testing
-
-\- Automated unit tests
-
-
-
-\## Current status
-
-
-
-The GUI and request-validation logic work locally.
-
-
-
-Mock communication and local TCP communication have been tested. Communication with the Jetson over Tailscale or direct Ethernet has not yet been validated.
-
-
-
-The receiver currently validates and acknowledges requests only. It does not start CUDA workloads, execute shell commands, reboot the Jetson, or start a physical proton test.
-
-
-
-\## Project structure
-
-
+Default local receiver settings:
 
 ```text
+Host: 127.0.0.1
+Port: 6000
+Timeout: 5 seconds
+```
 
+Example `START_TEST` request:
+
+```json
+{
+  "protocol_version": 1,
+  "command": "START_TEST",
+  "request_id": "<uuid>",
+  "beam_energy_mev": 100,
+  "shielding_material": "MLC1",
+  "shielding_thickness_mm": 12,
+  "sent_at_utc": "<utc-timestamp>"
+}
+```
+
+Example `STOP_TEST` request:
+
+```json
+{
+  "protocol_version": 1,
+  "command": "STOP_TEST",
+  "request_id": "<uuid>",
+  "target_request_id": "<accepted-start-request-id>",
+  "sent_at_utc": "<utc-timestamp>"
+}
+```
+
+Further protocol details are documented in [`docs/protocol.md`](docs/protocol.md).
+
+## Event logging
+
+Runtime events are stored as JSONL, with one JSON object per line.
+
+```text
+logs/coordinator_events.jsonl
+logs/receiver_events.jsonl
+```
+
+The coordinator log records operator-side command attempts and responses. The receiver log records commands received, accepted, rejected, and receiver lifecycle events. Matching request identifiers correlate records between the two files.
+
+Runtime `.jsonl` files are excluded from Git. The `logs/.gitkeep` file preserves the log directory in the repository.
+
+## Project structure
+
+```text
 melagen-test-coordinator/
+├── app.py
+├── app_local_tcp.py
+├── config.example.json
+├── coordinator/
+│   ├── __init__.py
+│   ├── constants.py
+│   ├── event_logger.py
+│   ├── request.py
+│   ├── transport.py
+│   └── ui.py
+├── receiver/
+│   ├── __init__.py
+│   └── test_receiver.py
+├── tests/
+│   ├── test_event_logger.py
+│   ├── test_receiver.py
+│   ├── test_request.py
+│   └── test_transport.py
+├── docs/
+│   └── protocol.md
+├── logs/
+│   └── .gitkeep
+├── README.md
+└── .gitignore
+```
 
-|-- app.py
+## Run the automated tests
 
-|-- app\_local\_tcp.py
+From the repository root:
 
-|-- coordinator/
+```powershell
+& "C:\msys64\ucrt64\bin\python.exe" `
+  -m unittest discover `
+  -s tests `
+  -v
+```
 
-|   |-- \_\_init\_\_.py
+## Run the GUI in mock mode
 
-|   |-- constants.py
+```powershell
+& "C:\msys64\ucrt64\bin\python.exe" ".\app.py"
+```
 
-|   |-- request.py
+Mock mode validates the GUI, request construction, state transitions, and coordinator logging without opening a network connection.
 
-|   |-- transport.py
+## Run the local TCP demonstration
 
-|   `-- ui.py
+Use two PowerShell windows from the repository root.
 
-|-- receiver/
+### Window 1: start the receiver
 
-|   |-- \_\_init\_\_.py
+```powershell
+& "C:\msys64\ucrt64\bin\python.exe" `
+  -m receiver.test_receiver `
+  --host 127.0.0.1 `
+  --port 6000 `
+  --timeout 5
+```
 
-|   `-- test\_receiver.py
+The receiver remains active while waiting for connections. Stop it with `Ctrl+C` after testing.
 
-|-- tests/
+### Window 2: start the TCP-connected GUI
 
-|   |-- test\_request.py
+```powershell
+& "C:\msys64\ucrt64\bin\python.exe" ".\app_local_tcp.py"
+```
 
-|   |-- test\_transport.py
+Perform one confirmed Start/Stop cycle. The GUI should return to `IDLE`, and both coordinator and receiver JSONL files should contain correlated records.
 
-|   `-- test\_receiver.py
+## Planned work
 
-|-- docs/
-
-|   `-- protocol.md
-
-|-- config.example.json
-
-|-- README.md
-
-`-- .gitignore
+- Validate direct Ethernet communication between the laptop and Jetson
+- Deploy the receiver package to the Jetson
+- Connect accepted commands to a defined CUDA workload interface
+- Implement safe process startup, shutdown, completion reporting, and failure handling
+- Define persistent recovery behavior after receiver restarts
+- Integrate the separate heartbeat system with the test-coordinator workflow
