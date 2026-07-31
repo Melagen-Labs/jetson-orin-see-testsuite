@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import tkinter as tk
 from datetime import datetime
@@ -24,6 +25,21 @@ from coordinator.transport import (
     MockTransport,
     Transport,
 )
+
+
+# Post-test results: the DUT (Jetson) returns a "summary" block in the STOP ack with
+# SEE counts by type. These map the DUT's stable type keys to operator-facing labels.
+RESULTS_DIR_NAME = "results"
+
+SEE_TYPE_LABELS = {
+    "cuda_golden_mismatch": "CUDA sim: golden-hash mismatch",
+    "cuda_nonfinite": "CUDA sim: NaN/Inf output",
+    "cuda_anomaly": "CUDA sim: value out of bounds",
+    "cuda_shutdown": "CUDA sim: shut down / restarted",
+    "gpu_mem_upset": "GPU RAM tester: bit upset",
+    "mem_tester_restart": "GPU RAM tester: shut down / restarted",
+    "fatal_error": "Fatal error record",
+}
 
 
 class CoordinatorState(Enum):
@@ -508,6 +524,126 @@ class TestCoordinatorApp(ttk.Frame):
             )
         )
 
+    def _next_result_path(self) -> Path:
+        """Return results/test_<N>.csv with the next unused N (test_1, test_2, ...)."""
+
+        results_dir = (
+            Path(__file__).resolve().parent.parent
+            / RESULTS_DIR_NAME
+        )
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        number = 1
+        while (results_dir / f"test_{number}.csv").exists():
+            number += 1
+
+        return results_dir / f"test_{number}.csv"
+
+    def _save_result_csv(
+        self,
+        summary: dict[str, Any],
+    ) -> Path | None:
+        """Write one CSV per test (test_1.csv, test_2.csv, ...). Never raises into
+        the GUI; returns the path written, or None on failure."""
+
+        try:
+            path = self._next_result_path()
+            by_type = summary.get("by_type", {}) or {}
+
+            with open(
+                path,
+                "w",
+                newline="",
+                encoding="utf-8",
+            ) as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["field", "value"])
+                writer.writerow(["run_id", summary.get("run_id", "")])
+                writer.writerow(
+                    ["beam_energy", summary.get("beam_energy", "")]
+                )
+                writer.writerow(
+                    ["shield_config", summary.get("shield_config", "")]
+                )
+                writer.writerow(
+                    ["duration_s", summary.get("duration_s", "")]
+                )
+                writer.writerow(
+                    ["total_sees", summary.get("total_sees", "")]
+                )
+                writer.writerow(
+                    ["sees_per_s", summary.get("sees_per_s", "")]
+                )
+                writer.writerow([])
+                writer.writerow(["see_type", "label", "count"])
+                for key in sorted(by_type):
+                    writer.writerow(
+                        [
+                            key,
+                            SEE_TYPE_LABELS.get(key, key),
+                            by_type[key],
+                        ]
+                    )
+
+            self._append_log(f"Results saved: {path}")
+            return path
+
+        except OSError as error:
+            self._append_log(
+                f"Could not save results CSV: {error}"
+            )
+            return None
+
+    def _format_results(
+        self,
+        stopped_target_id: str,
+        summary: dict[str, Any] | None,
+        csv_path: Path | None,
+    ) -> str:
+        """Build the post-test results popup text."""
+
+        lines = [
+            "STOP_TEST accepted.",
+            f"Stopped test ID: {stopped_target_id}",
+            "",
+        ]
+
+        if (
+            not isinstance(summary, dict)
+            or "by_type" not in summary
+        ):
+            lines.append(
+                "No run summary was returned "
+                f"(transport: {self.transport_mode})."
+            )
+            return "\n".join(lines)
+
+        if summary.get("error"):
+            lines.append(
+                f"Summary error: {summary['error']}"
+            )
+            return "\n".join(lines)
+
+        lines += [
+            f"Duration: {summary.get('duration_s', 0)} s",
+            f"SEEs detected: {summary.get('total_sees', 0)}",
+            f"SEEs/sec: {summary.get('sees_per_s', 0)}",
+            "",
+            "By type:",
+        ]
+
+        by_type = summary.get("by_type", {}) or {}
+        for key in sorted(by_type):
+            lines.append(
+                f"  {SEE_TYPE_LABELS.get(key, key)}: "
+                f"{by_type[key]}"
+            )
+
+        if csv_path is not None:
+            lines += ["", f"Saved: {csv_path.name}"]
+
+        return "\n".join(lines)
+
     def _record_event(
         self,
         event: str,
@@ -887,13 +1023,23 @@ class TestCoordinatorApp(ttk.Frame):
                 f"{stopped_target_id[:8]}"
             )
 
+            # Post-test results: the DUT returns a "summary" in the STOP ack
+            # (duration, SEE counts by type, SEEs/sec). Show it and save a CSV.
+            summary = response.get("summary")
+            csv_path = None
+            if (
+                isinstance(summary, dict)
+                and "by_type" in summary
+            ):
+                csv_path = self._save_result_csv(summary)
+
             messagebox.showinfo(
-                "Stop Accepted",
-                "STOP_TEST was accepted.\n\n"
-                "Stopped test ID: "
-                f"{stopped_target_id}\n\n"
-                "Stop command ID: "
-                f"{request.request_id}",
+                "Test Complete",
+                self._format_results(
+                    stopped_target_id,
+                    summary,
+                    csv_path,
+                ),
                 parent=self.master,
             )
 
