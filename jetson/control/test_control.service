@@ -1,0 +1,24 @@
+[Unit]
+Description=DUT test-control receiver (arbiter start/stop command channel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Receives the arbiter's start/stop-test JSON over TCP and arms/starts (or
+# disarms/stops) the test channels. Runs from the git clone at ~/see-testsuite.
+#
+# Runs as ROOT (no User=) on purpose: it must `systemctl restart/stop` the
+# channel services and write their ARMED flags. It is NOT gated by an ARMED flag
+# -- unlike the test channels, the receiver must always be listening so it can
+# act on the very command that arms them. Restart=always keeps it up.
+WorkingDirectory=/home/melagen/see-testsuite/jetson/control
+ExecStart=/usr/bin/python3 /home/melagen/see-testsuite/jetson/control/test_control.py --config /home/melagen/see-testsuite/jetson/control/config/test_control.json
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -24,6 +24,7 @@ REPO="${HOME}/see-testsuite"                         # clone lives here on every
 CUDA_BIN="/usr/local/cuda/bin"                       # JetPack CUDA toolchain (nvcc)
 COMPUTE="${REPO}/jetson/compute/cuda_particles"      # GPU compute channel dir
 MEMORY="${REPO}/jetson/memory"                        # memory channel dir (GPU DRAM tester, 2b)
+CONTROL="${REPO}/jetson/control"                      # arbiter test-control receiver dir
 
 # ---- 1. identity -----------------------------------------------------------
 # Every log line's jetson_id is derived from the hostname (jetson_id:"auto"),
@@ -71,15 +72,19 @@ echo "[6/7] arm compute + gpu-memory channels"
 touch "${COMPUTE}/ARMED" "${MEMORY}/ARMED"
 
 # ---- 7. services -----------------------------------------------------------
-# Install the unit files, reload systemd, and enable+start both DEPLOYED channels:
-# compute (cuda_particles) and GPU memory (mem_check_gpu). The CPU memory unit is
-# intentionally not installed.
+# Install the unit files, reload systemd, and enable+start the DEPLOYED channels:
+# compute (cuda_particles), GPU memory (mem_check_gpu), and the arbiter
+# test-control receiver (test_control, runs as root). The CPU memory unit is
+# intentionally not installed. The channels are gated by their ARMED flag (armed
+# in step 6); the control receiver is not gated -- it must always listen so it can
+# act on the arbiter's start/stop command (docs/CONTROL_INTERFACE.md).
 echo "[7/7] install + start services"
 sudo cp "${COMPUTE}/cuda_particles.service" /etc/systemd/system/cuda_particles.service
 sudo cp "${MEMORY}/mem_check_gpu.service"   /etc/systemd/system/mem_check_gpu.service
+sudo cp "${CONTROL}/test_control.service"   /etc/systemd/system/test_control.service
 sudo systemctl daemon-reload                         # re-read unit files
-sudo systemctl enable --now cuda_particles.service mem_check_gpu.service   # boot-start + start now
+sudo systemctl enable --now cuda_particles.service mem_check_gpu.service test_control.service
 
 echo "done -- status:"
-systemctl status cuda_particles.service mem_check_gpu.service --no-pager || true
+systemctl status cuda_particles.service mem_check_gpu.service test_control.service --no-pager || true
 echo "NOTE: log out and back in for the new hostname to appear in your shell prompt."

@@ -1,0 +1,28 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 5599,
+  "allowed_peers": [],
+
+  "protocol_version": 1,
+  "supported_commands": ["START_TEST", "STOP_TEST"],
+  "beam_energies_mev": [53, 100, 200],
+  "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
+  "shielding_thicknesses_mm": [8, 12, 16],
+
+  "control_log": "./logs/test_control.jsonl",
+
+  "channels": [
+    {
+      "name": "compute",
+      "config": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/config/particles.json",
+      "armed_flag": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/ARMED",
+      "service": "cuda_particles.service"
+    },
+    {
+      "name": "memory_gpu",
+      "config": "/home/melagen/see-testsuite/jetson/memory/config/mem_check_gpu.json",
+      "armed_flag": "/home/melagen/see-testsuite/jetson/memory/ARMED",
+      "service": "mem_check_gpu.service"
+    }
+  ]
+}

@@ -15,6 +15,40 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### control: DUT-side arbiter test-control receiver (start/stop over Ethernet)
+
+- **`<pending>` — jetson/control/ (new) + setup-board.sh + docs**
+  - New `jetson/control/test_control.py`: a TCP receiver for the arbiter's
+    start/stop-test button. The arbiter (sender) is a teammate's separate repo;
+    this is only our side, built to the agreed JSON contract (`protocol_version`,
+    `command`, `request_id`, `beam_energy_mev`, `shielding_material`,
+    `shielding_thickness_mm`, `sent_at_utc`).
+    - **START_TEST**: validates against the contract (protocol_version 1; energy
+      ∈ {53,100,200}; material ∈ {Aluminium,MLC1,MLC2}; thickness ∈ {8,12,16}),
+      writes the beam/shield metadata into each channel's JSON config (`run_id`←
+      request_id, `beam_energy`←"<n>MeV", `shield_config`←"<mat>_<mm>mm"), touches
+      each `ARMED` flag, and `systemctl restart`s each channel. Idempotent on a
+      repeated `request_id`.
+    - **STOP_TEST** (our forward-compatible extension; arbiter contract lists only
+      START_TEST so far): removes the `ARMED` flags and stops the channels.
+    - Replies with a JSON ack (`status` ok/error + per-channel results). Standard
+      library only — no new deps.
+  - `config/test_control.json` (**new**): listen host/port (TCP **5599**),
+    `allowed_peers` allow-list, the contract enumerations (must match the sender),
+    and the channel→config/armed_flag/service map.
+  - `test_control.service` (**new**): runs the receiver as **root** (needs to
+    `systemctl` the channels + write flags), always-on (not ARMED-gated — it must
+    listen to receive the arm command).
+  - `scripts/setup-board.sh`: installs + enables `test_control.service` alongside
+    the channels. `docs/CONTROL_INTERFACE.md` (**new**) documents the full contract.
+  - **Open coordination items (flagged, not blockers):** transport+port (TCP/5599
+    chosen here) must match the arbiter's sender; the arbiter must send `STOP_TEST`
+    for the stop button to reach us.
+  - **Verified off-hardware:** unit + TCP round-trip tests cover valid START (incl.
+    pretty-printed/chunked JSON), metadata injection, ARMED touch/remove, idempotent
+    retry, STOP, and every rejection path (bad version/enum, missing field, unknown
+    command, garbage JSON).
+
 ### cuda_particles: final-checkpoint detection, SEE state dump, crash flag + restart
 
 - **`fa8592c` — final-hash detection + SEE dump-to-SSD + crash handling**
