@@ -15,6 +15,21 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### coordinator: GUI can target a real DUT (--host); manual §4 uses it
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - §4 launch step now uses the real `--host` flag instead of "edit the launcher":
+    `python app_local_tcp.py --host 192.168.1.20` (or the board's Tailscale
+    IP/name). Notes that the GUI status line shows the live target so the operator
+    verifies which board a run hits, and that `app.py` is faked mock mode.
+- Paired coordinator change (teammate repo `melagen-test-coordinator`,
+  `b42ef77`): `app_local_tcp.py` gained `--host/--port/--timeout` (default host
+  `192.168.1.20`) — it was hardcoded to `127.0.0.1`, so the GUI previously could
+  not reach a real Jetson at all. `coordinator/ui.py` now surfaces the transport
+  target (`host:port`) in the status line + activity log. All 40 coordinator unit
+  tests pass. **This is what makes the §4 GUI acceptance test actually reach a
+  board** — before, the only working paths were mock (faked ACCEPTED) or localhost.
+
 ### docs: §4 acceptance test is now GUI-driven with a concrete CSV expected-result
 
 - **`3c32b7b` — docs/FLASH_AND_BRINGUP.md**

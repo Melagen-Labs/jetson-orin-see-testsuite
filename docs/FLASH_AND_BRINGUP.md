@@ -373,19 +373,17 @@ This is the acceptance test. Drive it from the operator laptop exactly as on bea
 day.
 
 **Launch the GUI pointed at this board.** From the coordinator repo
-(`melagen-test-coordinator`), the GUI's TCP transport must target the DUT, not
-loopback — `app_local_tcp.py` ships hardcoded to `127.0.0.1:6000`, so set the
-transport `host` to the board's address before launching:
-- **Direct Ethernet:** `192.168.1.20`
-- **Tailscale:** the board's `100.x.y.z` (from §3) or its MagicDNS name `orin-nano-NN`
+(`melagen-test-coordinator`), pass the DUT address with `--host`:
 
 ```bash
-# in melagen-test-coordinator/ — edit the TcpTransport host to the DUT IP, then:
-python app_local_tcp.py
+python app_local_tcp.py --host 192.168.1.20     # direct Ethernet
+python app_local_tcp.py --host orin-nano-03      # Tailscale (MagicDNS name)
+python app_local_tcp.py --host 100.x.y.z         # Tailscale (IP from §3)
 ```
-(`app.py` launches in **mock mode** and does *not* send over TCP — don't use it for
-this. Jetson-over-Ethernet/Tailscale isn't yet wired as a first-class option in that
-repo, so setting the host in the launcher is the current way; see its README.)
+The GUI's **Status** line and activity log show the live target (e.g.
+`tcp mode -> 192.168.1.20:6000`) — **confirm it names the board you mean to test**
+before clicking Start. (`app.py` launches in **mock mode** and never sends over the
+network — don't use it for a real board; its "ACCEPTED" is faked.)
 
 On the DUT side nothing extra is needed: `test_control.service` is already
 listening on TCP 6000 and is what actually starts/stops the workloads and returns
