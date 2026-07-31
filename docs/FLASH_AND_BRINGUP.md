@@ -256,25 +256,77 @@ host keys again, so you'll re-accept the key on your next connect.
 - The `radpull` `authorized_keys` carried over from the master, so the arbiter's
   pull key already works; if a *different* machine will pull from this board,
   append its pubkey too (keys are per-machine).
-- To reach a headless clone you need it on the network: if you use **Tailscale**,
-  each board needs its own `sudo tailscale up` (separate device enrollment); the
-  **direct Ethernet** link uses the same static `192.168.1.20` on every board, so
-  bring clones up **one at a time** on that cable.
+- **Direct Ethernet** uses the same static `192.168.1.20` on every board, so
+  there's nothing per-board to set — just bring clones up **one at a time** on
+  that cable.
+- **Tailscale** is the one place with per-board values you must find and enter by
+  hand. It has its own step below.
+
+### Enroll each board in Tailscale — ⚠️ the one manual, per-board step
+
+We reach the boards over Tailscale, so every clone must join the tailnet as its
+**own** node. Two things make this unavoidably per-board:
+
+**Gotcha — a clone inherits the master's Tailscale identity.** Board 1 is already
+logged in, and its Tailscale state lives in the disk image
+(`/var/lib/tailscale/tailscaled.state`). So a fresh clone boots up *claiming to be
+`orin-nano-01`'s Tailscale node.* If you skip the reset below, two boards fight
+over one identity and neither is reliably reachable. Reset first, then enrol:
+
+```bash
+# 1. Drop the master's inherited Tailscale identity (definitive: clear the state)
+sudo systemctl stop tailscaled
+sudo rm -f /var/lib/tailscale/tailscaled.state
+sudo systemctl start tailscaled
+
+# 2. Enrol THIS board as its own node
+sudo tailscale up
+```
+
+**➡️ What varies per board and must be handled by hand:**
+
+1. **The login URL.** `sudo tailscale up` prints a URL like
+   `https://login.tailscale.com/a/xxxxxxxx`. **It is different on every board.**
+   Open it in a browser, sign in to the tailnet, and approve that board. (The
+   board's Tailscale name is set automatically from its hostname — `orin-nano-NN`,
+   already applied by `setup-board.sh` — so you don't type that.)
+2. **The board's Tailscale IP.** After it comes up, look it up and **write it down
+   against the board number** — this is the address you and the arbiter SSH to:
+   ```bash
+   tailscale ip -4        # -> 100.x.y.z, unique to this board
+   ```
+   **Tailscale assigns this; it is different for every board and you cannot
+   predict it.** (If MagicDNS is enabled on the tailnet, `orin-nano-NN` also
+   resolves, which saves you tracking the raw IP.)
+
+**Fleet shortcut (optional, removes the per-board browser step).** Generate one
+**reusable** auth key in the Tailscale admin console (Settings → Keys) and pass it
+on every board — same key, no URL to open:
+
+```bash
+sudo systemctl stop tailscaled && sudo rm -f /var/lib/tailscale/tailscaled.state && sudo systemctl start tailscaled
+sudo tailscale up --authkey tskey-auth-XXXXXXXX   # same key works on all 6 clones
+```
+
+The auth key is a **secret — do not commit it** to the repo. Even with the key you
+still look up each board's assigned IP (step 2) afterward.
 
 ### So what actually differs per board?
 
-| Per-board item | Handled by | Unique because |
+| Per-board item | Handled by | Manual input per board? |
 |---|---|---|
-| Hostname / `jetson_id` | `setup-board.sh NN` | you pass the number |
-| SSH host keys | `setup-board.sh NN` (step 1b) | regenerated per clone |
-| machine-id | `setup-board.sh NN` (step 1c) | regenerated per clone |
-| Golden table | `setup-board.sh NN` | regenerated on-device |
-| Tailscale identity (if used) | `sudo tailscale up` per board | separate enrollment |
+| Hostname / `jetson_id` | `setup-board.sh NN` | just the number |
+| SSH host keys | `setup-board.sh NN` (step 1b) | no — auto |
+| machine-id | `setup-board.sh NN` (step 1c) | no — auto |
+| Golden table | `setup-board.sh NN` | no — auto |
+| **Tailscale node + IP** | **manual (reset + `tailscale up`)** | **yes — see the ⚠️ step above** |
 
-The only per-board step **outside** `setup-board.sh` is Tailscale enrollment, and
-that only if you use Tailscale rather than the direct Ethernet link. Everything
-else — software, hardening, `radpull` key, services, config — is identical across
-the fleet by design and comes straight from the master image.
+So there are **two** per-board actions: the one `setup-board.sh NN` command (only
+the number varies, everything else is automatic), **and** the Tailscale enrolment
+above (reset the inherited identity, approve the board's unique login URL, record
+its assigned IP). Everything else — software, hardening, `radpull` key, services,
+config — is identical across the fleet by design and comes straight from the
+master image.
 
 ---
 

@@ -15,6 +15,25 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: manual §3 — full Tailscale per-board enrolment procedure
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - §3 previously only *mentioned* Tailscale ("each board needs its own
+    `tailscale up`"). Added a dedicated, clearly-flagged subsection with the real
+    procedure and the clone gotcha: because the master (board 1) is already
+    authenticated, its Tailscale identity (`/var/lib/tailscale/tailscaled.state`)
+    is baked into the image, so every clone must **reset that state first**
+    (`stop tailscaled → rm state → start`) before `tailscale up`, or two boards
+    collide on one node identity.
+  - Bolded the two values that are **manual and unique per board**: the per-board
+    **login URL** printed by `tailscale up`, and the **Tailscale IP** (`tailscale
+    ip -4`) that must be looked up and recorded (it's the SSH target). Documented
+    the reusable-auth-key shortcut that removes the browser step (key is a secret,
+    not committed).
+  - Updated the "what differs per board" table + prose: there are **two**
+    per-board actions — `setup-board.sh NN` (number only) **and** Tailscale
+    enrolment — not one.
+
 ### setup: fold SSH-host-key + machine-id regen into setup-board.sh; manual to match
 
 - **`a668bc8` — scripts/setup-board.sh**
