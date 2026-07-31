@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: manual §3 — one command per clone + full per-board difference list
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`1462788` — docs/FLASH_AND_BRINGUP.md**
   - Rewrote §3 to make the per-board finalize explicit: **one** `setup-board.sh NN`
     per clone (operator supplies the number → hostname + own golden + re-arm), and
     added the **clone-hygiene** steps the script does *not* do — regenerating each
