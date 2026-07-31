@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: correct bring-up manual §1 with board 1's verified state
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`c3afebc` — docs/FLASH_AND_BRINGUP.md**
   - Checked board 1 (`100.122.15.91`) directly and corrected §1 to match: it is
     **already on the clone model** (all units point at `~/see-testsuite`; the
     scp-layout "cut it over first" caveat and the stale `DEPLOYMENT.md` 2026-07-30
