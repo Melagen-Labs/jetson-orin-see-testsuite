@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>   // gethostname (fleet jetson_id "auto")
+
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
 
@@ -144,6 +146,13 @@ int main(int argc, char **argv)
     Config cfg;
     if (!loadConfig(configPath, cfg)) {
         fprintf(stderr, "[cuda_particles] config '%s' not found; using defaults\n", configPath.c_str());
+    }
+
+    // Fleet identity: jetson_id "auto" -> the board's hostname, so one config
+    // file is correct on every DUT (set each board's hostname to orin-nano-0N).
+    if (cfg.jetson_id == "auto") {
+        char host[256];
+        if (gethostname(host, sizeof(host)) == 0) cfg.jetson_id = std::string(host);
     }
 
     // Select the fastest CUDA device and bind to it.

@@ -59,6 +59,8 @@ jetson-orin-radtest/
     BUILD_PLAN.md                 # authoritative design doc
     CHANGELOG.md                  # every change, newest first (for review)
     SERVICES.md                   # systemd install + ARMED arming model
+    DEPLOYMENT.md                 # 7-DUT fleet: git-clone dev + image-freeze
+
 
     POWER_FIRMWARE_INTERFACE.md   # channel-5 firmware<->arbiter contract
     PSTORE_SETUP.md               # channel-4 kernel pstore/ramoops runbook

@@ -15,6 +15,22 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### fleet deployment: git-clone model + `jetson_id:"auto"` + docs
+
+- **`PENDING10` — fleet: hostname jetson_id, fleet script, DEPLOYMENT.md**
+  - `jetson/memory/mem_check.py` and `jetson/compute/cuda_particles/particles_main.cpp`:
+    `jetson_id: "auto"` now resolves to the board **hostname** (`socket.gethostname`
+    / `gethostname()`), so one config fits all 7 DUTs. Both `config` files default
+    to `"auto"`.
+  - `scripts/fleet.sh` (**new**): one-command fleet updater (`pull`/`build`/
+    `restart`/`status` over SSH to `orin-nano-01..07`).
+  - `docs/DEPLOYMENT.md` (**new**): the 7-DUT model — git-clone for dev
+    (`git pull`, no more per-board scp), one hashed master image for the frozen
+    campaign; per-DUT hostname + own golden table. Linked from README.
+  - `.gitignore`: ignore per-board `ARMED` flag.
+  - Context: campaign scales to **7 Jetson Orin Nano DUTs**; the Nano can reach
+    GitHub (clone/pull viable). Verified on-target: see follow-up entry.
+
 ### docs: record DRAM-ECC check + memory check-frequency rationale (§2a)
 
 - **`8ee7360` — BUILD_PLAN §2a: DRAM ECC detection-scope note**

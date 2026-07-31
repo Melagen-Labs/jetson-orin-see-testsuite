@@ -175,6 +175,11 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    # Fleet identity: jetson_id "auto" -> the board's hostname, so one config
+    # file is correct on every DUT (set each board's hostname to orin-nano-0N).
+    if str(cfg.get("jetson_id", "")).strip().lower() == "auto":
+        import socket
+        cfg["jetson_id"] = socket.gethostname()
     if args.self_test:
         cfg["buffer_mb"] = 64
         cfg["iterations"] = 6

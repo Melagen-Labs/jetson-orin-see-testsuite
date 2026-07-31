@@ -13,7 +13,7 @@
   "heartbeat_path": "./logs/heartbeat.txt",
 
   "run_id": "unset",
-  "jetson_id": "orin-nano-01",
+  "jetson_id": "auto",
   "beam_energy": "unset",
   "fluence_source": "unset",
   "shield_config": "unset",

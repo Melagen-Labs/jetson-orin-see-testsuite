@@ -23,6 +23,9 @@ build/
 *.so
 *.out
 
+# --- Per-DUT runtime flags (machine-specific, created on the board) ---
+ARMED
+
 # --- OS / editor cruft ---
 .DS_Store
 Thumbs.db
