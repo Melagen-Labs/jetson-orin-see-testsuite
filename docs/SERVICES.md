@@ -41,10 +41,10 @@ start of a campaign, one to disarm at the end. Nothing in between.
 
 ### Compute — `cuda_particles`
 ```bash
-sudo cp /home/melagen/cuda_particles/cuda_particles.service /etc/systemd/system/cuda_particles.service
+sudo cp /home/melagen/see-testsuite/jetson/compute/cuda_particles/cuda_particles.service /etc/systemd/system/cuda_particles.service
 sudo systemctl daemon-reload
 sudo systemctl enable cuda_particles.service
-touch /home/melagen/cuda_particles/ARMED
+touch /home/melagen/see-testsuite/jetson/compute/cuda_particles/ARMED
 sudo systemctl start cuda_particles.service
 systemctl status cuda_particles.service --no-pager
 ```
@@ -52,15 +52,15 @@ systemctl status cuda_particles.service --no-pager
 
 ### CPU/system RAM — `mem_check`
 ```bash
-sudo cp /home/melagen/mem_check/mem_check.service /etc/systemd/system/mem_check.service
+sudo cp /home/melagen/see-testsuite/jetson/memory/mem_check.service /etc/systemd/system/mem_check.service
 sudo systemctl daemon-reload
 sudo systemctl enable mem_check.service
-touch /home/melagen/mem_check/ARMED
+touch /home/melagen/see-testsuite/jetson/memory/ARMED
 sudo systemctl start mem_check.service
 systemctl status mem_check.service --no-pager
 ```
-(`mem_check` deploy at `~/mem_check/` also contains `event_log.py` next to the
-script so the schema helper import resolves.)
+(In the clone, `mem_check.py` resolves `shared/event_log.py` via `../../shared` —
+no `event_log.py` copy needed.)
 
 ## Stop / disarm (run once, when done testing)
 ```bash

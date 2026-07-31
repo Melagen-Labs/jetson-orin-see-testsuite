@@ -4,18 +4,19 @@ After=multi-user.target
 
 [Service]
 Type=simple
-# Matches the on-target deployment under the melagen home dir. event_log.py is
-# deployed next to mem_check.py so the schema helper import resolves.
+# Runs from the git clone at ~/see-testsuite (fleet model, docs/DEPLOYMENT.md).
+# mem_check.py resolves shared/event_log.py via ../../shared in the clone layout,
+# so no event_log.py copy is needed.
 #
 # ARMING: the unit is `enable`d (wired into boot) but only actually starts when
 # the ARMED flag file exists. `touch ARMED` before a campaign so every boot --
 # including a watchdog/crash reboot -- restarts the test; `rm ARMED` afterward so
 # ordinary power-ons do NOT run it. Restart=always covers process-level crashes
 # while the board stays up.
-ConditionPathExists=/home/melagen/mem_check/ARMED
+ConditionPathExists=/home/melagen/see-testsuite/jetson/memory/ARMED
 User=melagen
-WorkingDirectory=/home/melagen/mem_check
-ExecStart=/usr/bin/python3 /home/melagen/mem_check/mem_check.py --config /home/melagen/mem_check/config/mem_check.json
+WorkingDirectory=/home/melagen/see-testsuite/jetson/memory
+ExecStart=/usr/bin/python3 /home/melagen/see-testsuite/jetson/memory/mem_check.py --config /home/melagen/see-testsuite/jetson/memory/config/mem_check.json
 Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=2

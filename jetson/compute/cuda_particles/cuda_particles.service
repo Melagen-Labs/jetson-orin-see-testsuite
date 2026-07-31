@@ -13,10 +13,10 @@ Type=simple
 # reboots, so every boot (incl. a crash/watchdog reboot) restarts the workload
 # with no further action. `rm ARMED` once to disarm so ordinary power-ons don't
 # run it. Restart=always covers process-level crashes while the board stays up.
-ConditionPathExists=/home/melagen/cuda_particles/ARMED
+ConditionPathExists=/home/melagen/see-testsuite/jetson/compute/cuda_particles/ARMED
 User=melagen
-WorkingDirectory=/home/melagen/cuda_particles
-ExecStart=/home/melagen/cuda_particles/build/cuda_particles --config /home/melagen/cuda_particles/config/particles.json
+WorkingDirectory=/home/melagen/see-testsuite/jetson/compute/cuda_particles
+ExecStart=/home/melagen/see-testsuite/jetson/compute/cuda_particles/build/cuda_particles --config /home/melagen/see-testsuite/jetson/compute/cuda_particles/config/particles.json
 # JetPack CUDA runtime (binary links libcudart from here).
 Environment=PATH=/usr/local/cuda/bin:/usr/bin:/bin
 Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64

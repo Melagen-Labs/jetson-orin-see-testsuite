@@ -15,6 +15,19 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### services: repoint both units to the git clone (`~/see-testsuite`)
+
+- **`PENDING11` — cuda_particles/mem_check .service → clone paths**
+  - `jetson/compute/cuda_particles/cuda_particles.service` and
+    `jetson/memory/mem_check.service`: `WorkingDirectory`, `ExecStart`, and
+    `ConditionPathExists` repointed from the old standalone dirs
+    (`~/cuda_particles`, `~/mem_check`) to the clone
+    (`~/see-testsuite/jetson/compute/cuda_particles`, `.../jetson/memory`). Same
+    `~/see-testsuite` path on every DUT (all `melagen`), so one committed unit
+    fits the whole fleet. Fixed the stale mem_check comment (clone resolves
+    `event_log.py` via `../../shared`, no copy needed). Retires the drift-prone
+    scp deployment. `docs/SERVICES.md` install paths updated to match.
+
 ### fleet deployment: git-clone model + `jetson_id:"auto"` + docs
 
 - **`a8fd27f` — fleet: hostname jetson_id, fleet script, DEPLOYMENT.md**
