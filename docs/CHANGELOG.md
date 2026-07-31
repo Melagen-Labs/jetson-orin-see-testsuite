@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: STOP reply returns a per-run SEE summary (popup + CSV data)
 
-- **`<pending>` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md**
+- **`0e93b47` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md**
   - On STOP_TEST the receiver now scans each channel's JSONL log for the finishing
     run and returns a `summary` block in the ack: `duration_s`, `total_sees`,
     `sees_per_s`, and a per-type breakdown. Added a `log` path per channel in the
