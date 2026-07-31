@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### coordinator: GUI can target a real DUT (--host); manual §4 uses it
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`5cfd652` — docs/FLASH_AND_BRINGUP.md**
   - §4 launch step now uses the real `--host` flag instead of "edit the launcher":
     `python app_local_tcp.py --host 192.168.1.20` (or the board's Tailscale
     IP/name). Notes that the GUI status line shows the live target so the operator
