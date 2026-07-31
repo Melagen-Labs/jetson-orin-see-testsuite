@@ -51,7 +51,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### mem_check: add GPU DRAM tester (§2b); memory testing is now GPU-only
 
-- **`<pending>` — mem_check.py GPU backend + gpu config/service + docs**
+- **`573a9ff` — mem_check.py GPU backend + gpu config/service + docs**
   - `jetson/memory/mem_check.py`: the moving-inversions tester now selects its
     backend from config `target`. `target:"gpu"` (channel 2b) allocates a **CuPy**
     uint8 buffer in **GPU DRAM** and runs the exact same paint / hold / read-back /
@@ -80,7 +80,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### deps: install CuPy on the DUT for §2b GPU memory test + new `DEPENDENCIES.md`
 
-- **`<pending>` — docs/DEPENDENCIES.md (new) + docs/CHANGELOG.md**
+- **`573a9ff` — docs/DEPENDENCIES.md (new) + docs/CHANGELOG.md**
   - Installed CuPy on the Jetson to enable the §2b GPU-memory tester (the CuPy
     extension of `mem_check.py`). `pip`/`ensurepip` are stripped from JetPack's
     base Python, so `sudo apt-get install -y python3-pip` was run first (by the
