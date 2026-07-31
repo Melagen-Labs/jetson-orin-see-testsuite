@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: include jetson_id (hostname) in the post-test summary/CSV
 
-- **`<pending>` — test_control.py**
+- **`eb11bc4` — test_control.py**
   - `summarize_run()` now adds `jetson_id` (the board hostname) to the summary
     block returned on STOP, so the coordinator's per-test CSV records which board
     produced the run. Additive/backward-compatible; the top-level reply already
