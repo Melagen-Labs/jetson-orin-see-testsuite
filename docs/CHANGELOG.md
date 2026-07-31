@@ -15,6 +15,20 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: reframe the bring-up manual around the existing master board
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - Restructured so **board 1 already being flashed/working is the starting
+    point**, not a from-scratch flash. Main path is now: (§1) bring the existing
+    dev board fully to spec as the **master** — clone-model software, `radpull` +
+    logs, beam hardening — including the note to cut it off the legacy scp layout
+    first; (§2) **clone the master** to boards 2–7 via `l4t_backup_restore.sh`;
+    (§3) **finalize each clone** (hostname, regenerate its own golden, re-arm);
+    (§4) **test each over Ethernet**.
+  - Flashing a board from bare metal moved to **Appendix A** (rebuild the master
+    or replace a dead board only). Added a per-board fleet-status checklist and
+    kept the error table + sources.
+
 ### docs: full flash → bring-up → test manual (FLASH_AND_BRINGUP.md)
 
 - **`d2482b8` — docs/FLASH_AND_BRINGUP.md (new)**
