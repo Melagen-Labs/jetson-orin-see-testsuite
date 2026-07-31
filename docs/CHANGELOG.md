@@ -15,6 +15,26 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### setup: fold SSH-host-key + machine-id regen into setup-board.sh; manual to match
+
+- **`<pending>` — scripts/setup-board.sh**
+  - Step 1 (identity) now regenerates the two remaining per-clone items that need
+    no operator input: **SSH host keys** (`rm -f /etc/ssh/ssh_host_* && ssh-keygen
+    -A && systemctl restart ssh`, step 1b) and the **machine-id** (`rm -f
+    /etc/machine-id /var/lib/dbus/machine-id && systemd-machine-id-setup`, step 1c),
+    alongside the existing hostname set. Finalizing a clone is now truly **one
+    command** — no manual hygiene block. CLI contract unchanged (`setup-board.sh
+    <NN>`). Re-running rotates the SSH host keys again (harmless; re-accept on next
+    connect). Does not touch `boot_id`, so the science logs are unaffected.
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - §3 rewritten to match: the single `setup-board.sh NN` now covers hostname, SSH
+    host keys, machine-id, and golden — the "Clone hygiene the script does NOT do"
+    section is gone. Difference table updated (SSH host keys + machine-id now
+    `setup-board.sh`, not manual); only Tailscale enrollment remains outside it.
+  - §0 checklist + §1 state block: board 1 marked **master-ready and
+    Ethernet-tested** (named `orin-nano-01`, hardened, §4 checks pass per operator)
+    — it's now the validated master to clone from.
+
 ### docs: manual §3 — one command per clone + full per-board difference list
 
 - **`1462788` — docs/FLASH_AND_BRINGUP.md**

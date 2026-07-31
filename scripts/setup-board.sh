@@ -27,10 +27,32 @@ MEMORY="${REPO}/jetson/memory"                        # memory channel dir (GPU 
 CONTROL="${REPO}/jetson/control"                      # arbiter test-control receiver dir
 
 # ---- 1. identity -----------------------------------------------------------
-# Every log line's jetson_id is derived from the hostname (jetson_id:"auto"),
-# so naming the board is what makes its logs identifiable in the fleet.
+# A clone is a byte-for-byte copy of the master, so it inherits three things that
+# must be unique per board: the hostname, the SSH host keys, and the machine-id.
+# None of them need operator input beyond the board number, so we regenerate all
+# three here.
+#
+# 1a. Hostname. Every log line's jetson_id is derived from the hostname
+# (jetson_id:"auto"), so naming the board is what makes its logs identifiable.
 echo "[1/7] set hostname -> ${HOSTNAME_NEW}"
 sudo hostnamectl set-hostname "${HOSTNAME_NEW}"
+
+# 1b. SSH host keys. A clone answers SSH with the master's host keys, so every
+# board looks like the same host and connecting to a second board on the same
+# direct-link IP trips a "host key changed" warning. Regenerate a unique set.
+# (Re-running setup-board.sh rotates these again -- harmless, just re-accept the
+# key on next connect. Does NOT affect the science logs.)
+echo "      regenerate SSH host keys"
+sudo rm -f /etc/ssh/ssh_host_*
+sudo ssh-keygen -A                                   # fresh per-board host keys
+sudo systemctl restart ssh                           # serve the new keys now
+
+# 1c. machine-id. Also cloned from the master; regenerate so each board is a
+# distinct systemd/D-Bus machine. (boot_id, which the logs actually use, is
+# already random per boot -- this is hygiene, not a data-integrity fix.)
+echo "      regenerate machine-id"
+sudo rm -f /etc/machine-id /var/lib/dbus/machine-id
+sudo systemd-machine-id-setup
 
 # ---- 2. code ---------------------------------------------------------------
 # Clone the repo on first run; on later runs just fast-forward to the latest commit.

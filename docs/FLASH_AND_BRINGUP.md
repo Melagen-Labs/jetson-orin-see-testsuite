@@ -36,8 +36,11 @@ case (reflashing, or rebuilding a master).
 
 | Board | Flashed | Master-ready (§1) | Cloned (§2) | Finalized (§3) | Ethernet-tested (§4) |
 |---|---|---|---|---|---|
-| orin-nano-01 (master) | ✅ | ⬜ verify to spec | n/a | n/a | ⬜ |
+| orin-nano-01 (master) | ✅ | ✅ | n/a | n/a | ✅ |
 | orin-nano-02 … 07 | ⬜ | — | ⬜ | ⬜ | ⬜ |
+
+Board 1 is now a validated master: named `orin-nano-01`, hardened, and
+Ethernet-tested — ready to image onto boards 2–7 (§2).
 
 ---
 
@@ -58,18 +61,18 @@ A master-ready board has:
 
 > **Verified current state of board 1 (2026-07-31).** Checked directly on
 > `100.122.15.91`:
-> - ✅ **Already on the clone model** — all three units point at
+> - ✅ **On the clone model** — all three units point at
 >   `/home/melagen/see-testsuite/...` (the older scp layout is gone; the
 >   `DEPLOYMENT.md` 2026-07-30 snapshot is stale). Nothing to cut over.
 > - ✅ **Services correct** — `cuda_particles`, `mem_check_gpu`, `test_control`
 >   enabled on clone paths; CPU `mem_check` disabled (GPU-only). All inactive
 >   except `test_control` (correct stopped state).
-> - ⬜ **Hostname is still `ubuntu`**, not `orin-nano-01` — the per-board identity
->   step (§1a) has not been run yet.
-> - ⬜ **Not hardened yet** — `kernel.panic=0`, no watchdog, boots to
->   `graphical.target` (§1c still to do).
+> - ✅ **Named `orin-nano-01`** — `setup-board.sh 01` has been run (§1a).
+> - ✅ **Hardened** — watchdog + fast panic reboot + headless applied (§1c).
+> - ✅ **Ethernet-tested** — the §4 checks pass on the master itself (§1d).
 >
-> So for board 1, §1a and §1c are the remaining work before it's a clean master.
+> Board 1 is complete and is the master to clone from. The steps below are the
+> record of how it got here (and what to reapply if you rebuild the master).
 
 ### 1a. Put board 1 on the clone-model software
 
@@ -228,31 +231,25 @@ the number, the script does the rest:
 ssh melagen@<new-board>
 ~/see-testsuite/scripts/setup-board.sh 03     # 02..07 — names it orin-nano-03, regenerates ITS golden, re-arms
 ```
-That handles the two **test-relevant** things that must differ per board:
+That single command now handles **everything that must differ per board**:
 
 1. **Hostname → `jetson_id`.** So every log line is stamped with the right board
    (`jetson_id:"auto"` resolves to the hostname).
-2. **Golden table.** `golden_hashes.txt` is device+build specific — each board
+2. **SSH host keys.** Regenerated so each board has a unique set — no more
+   "host key changed" warnings when you hop between boards on the same
+   direct-link IP. (Step 1b in the script.)
+3. **machine-id.** Regenerated so each board is a distinct systemd/D-Bus machine.
+   (Step 1c. `boot_id`, which the logs actually key off, is already per-boot
+   random, so this is hygiene, not a data fix.)
+4. **Golden table.** `golden_hashes.txt` is device+build specific — each board
    generates and verifies its **own**, no beam present. A board whose golden
    doesn't match its peers on identical hardware/build is itself suspect.
 
-Log out/in afterward for the new hostname to take effect. `setup-board.sh` prompts
-for the sudo password (it sets the hostname and services), so the **operator** runs
-it on the board.
-
-### Clone hygiene the script does NOT do (run once per clone)
-
-A raw clone also shares the master's **SSH host keys** and **machine-id**. This
-does *not* corrupt the science logs — those key off the hostname plus a per-boot
-random `boot_id`, not machine-id — but every board answering SSH with identical
-host keys is untidy and trips "host key changed" warnings when you connect to
-different boards on the same direct-link IP. Regenerate both, once, per clone:
-```bash
-sudo rm -f /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh    # unique SSH host keys
-sudo rm -f /etc/machine-id /var/lib/dbus/machine-id && sudo systemd-machine-id-setup  # unique machine-id
-```
-(These could later be folded into `setup-board.sh` so the whole finalize really is
-one command.)
+So finalizing a clone really is **one command, no manual hygiene**. Log out/in
+afterward for the new hostname to take effect. `setup-board.sh` prompts for the
+sudo password (it sets the hostname, host keys, machine-id, and services), so the
+**operator** runs it on the board. Re-running is safe — note it rotates the SSH
+host keys again, so you'll re-accept the key on your next connect.
 
 ### Keys and network reachability
 
@@ -269,13 +266,15 @@ one command.)
 | Per-board item | Handled by | Unique because |
 |---|---|---|
 | Hostname / `jetson_id` | `setup-board.sh NN` | you pass the number |
+| SSH host keys | `setup-board.sh NN` (step 1b) | regenerated per clone |
+| machine-id | `setup-board.sh NN` (step 1c) | regenerated per clone |
 | Golden table | `setup-board.sh NN` | regenerated on-device |
-| SSH host keys | manual hygiene block above | regenerated per clone |
-| machine-id | manual hygiene block above | regenerated per clone |
 | Tailscale identity (if used) | `sudo tailscale up` per board | separate enrollment |
 
-Everything else — software, hardening, `radpull` key, services, config — is
-identical across the fleet by design and comes straight from the master image.
+The only per-board step **outside** `setup-board.sh` is Tailscale enrollment, and
+that only if you use Tailscale rather than the direct Ethernet link. Everything
+else — software, hardening, `radpull` key, services, config — is identical across
+the fleet by design and comes straight from the master image.
 
 ---
 
