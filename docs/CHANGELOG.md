@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: Appendix A installs Tailscale on a from-scratch board; spelling
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`c42d841` — docs/FLASH_AND_BRINGUP.md**
   - Appendix A (flash from scratch) assumed `tailscale` already existed — true
     only for clones, which inherit it from the master image; a freshly flashed
     board has no `tailscale` binary. Added the install step
