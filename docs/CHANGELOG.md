@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### fleet deployment: git-clone model + `jetson_id:"auto"` + docs
 
-- **`PENDING10` — fleet: hostname jetson_id, fleet script, DEPLOYMENT.md**
+- **`a8fd27f` — fleet: hostname jetson_id, fleet script, DEPLOYMENT.md**
   - `jetson/memory/mem_check.py` and `jetson/compute/cuda_particles/particles_main.cpp`:
     `jetson_id: "auto"` now resolves to the board **hostname** (`socket.gethostname`
     / `gethostname()`), so one config fits all 7 DUTs. Both `config` files default
