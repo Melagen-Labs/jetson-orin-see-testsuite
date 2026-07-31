@@ -15,6 +15,21 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: add INTEGRATION_TEST.md (DUT↔arbiter over-Ethernet runbook)
+
+- **`<pending>` — docs/INTEGRATION_TEST.md (new)**
+  - Step-by-step runbook to validate the DUT against the arbiter over a direct
+    Ethernet cable: static-IP setup (Jetson `nmcli` + Windows `New-NetIPAddress`),
+    test-control (TCP 5599), heartbeat (UDP 5555), and log pull (SSH/radpull), with
+    laptop-as-arbiter Python snippets so the DUT side is testable without the
+    teammate's arbiter. Captures the Windows quirks hit in practice (elevated
+    PowerShell for IP change; `python -c` strips quotes → write-to-file; USB-GbE
+    is `Ethernet 2`, not the VirtualBox virtual adapter; NM static profile to stop
+    the DHCP "connection failed" popup).
+  - **Results so far (2026-07-31):** phases 0–3 PASS on hardware — control command
+    over Ethernet restarts both channels with beam metadata in the logs; heartbeat
+    streams 1 Hz with climbing seq. Phase 4 (log pull) pending the arbiter's pubkey.
+
 ### logs: standardize DUT log output to /var/log/radtest/<channel> for arbiter pull
 
 - **`3efd3c7` — mem_check_gpu.json + particles.json log paths**
