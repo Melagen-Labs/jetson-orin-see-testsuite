@@ -15,6 +15,24 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: full flash → bring-up → test manual (FLASH_AND_BRINGUP.md)
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md (new)**
+  - Expanded the team's Jetson cloning reference into a full-lifecycle manual:
+    bare board → **flash** (SDK Manager, JetPack 6.2.2, NVMe, Force Recovery, host
+    prep) → **one-time OS setup** (`radpull` user + arbiter key, `/var/log/radtest`
+    tree, beam hardening via CRASH_RECOVERY, pstore, direct-Ethernet static IP) →
+    **deploy our software** (`setup-board.sh NN`: clone, CuPy, build, golden, arm,
+    services) → **test over Ethernet** (the 4 interface checks + full dry run) →
+    **clone to units 2–7** (the original `l4t_backup_restore.sh` / `flash.sh -G`
+    research, kept intact).
+  - Includes an end-to-end "campaign-ready" checklist, the known-errors table
+    (flash/clone host-environment gotchas + the CuPy numpy pin), team
+    recommendations, and all original NVIDIA/forum sources.
+  - Ties together existing docs (DEPLOYMENT, SERVICES, INTEGRATION_TEST,
+    CRASH_RECOVERY, PSTORE_SETUP, DEPENDENCIES) as the ordered path through them;
+    no code touched, no live board changes.
+
 ### docs: crash-recovery runbook — arm watchdog, fast panic reboot, headless
 
 - **`c102490` — docs/CRASH_RECOVERY.md (new)**
