@@ -56,11 +56,20 @@ A master-ready board has:
    `/var/log/radtest`.
 4. **Validated over Ethernet** — the §4 checks pass on the master itself.
 
-> **Current-state note (2026-07-30):** per [`DEPLOYMENT.md`](DEPLOYMENT.md), the
-> dev board is still on the **older standalone scp deployment** (`~/cuda_particles`,
-> `~/mem_check`). Cut it over to the clone model **before** imaging, so the image
-> you propagate to six boards is the clean one — you don't want to clone the
-> legacy layout onto the whole fleet.
+> **Verified current state of board 1 (2026-07-31).** Checked directly on
+> `100.122.15.91`:
+> - ✅ **Already on the clone model** — all three units point at
+>   `/home/melagen/see-testsuite/...` (the older scp layout is gone; the
+>   `DEPLOYMENT.md` 2026-07-30 snapshot is stale). Nothing to cut over.
+> - ✅ **Services correct** — `cuda_particles`, `mem_check_gpu`, `test_control`
+>   enabled on clone paths; CPU `mem_check` disabled (GPU-only). All inactive
+>   except `test_control` (correct stopped state).
+> - ⬜ **Hostname is still `ubuntu`**, not `orin-nano-01` — the per-board identity
+>   step (§1a) has not been run yet.
+> - ⬜ **Not hardened yet** — `kernel.panic=0`, no watchdog, boots to
+>   `graphical.target` (§1c still to do).
+>
+> So for board 1, §1a and §1c are the remaining work before it's a clean master.
 
 ### 1a. Put board 1 on the clone-model software
 
@@ -75,12 +84,9 @@ installs+starts the three core services (`cuda_particles`, `mem_check_gpu`,
 `test_control`). Re-running is safe. Details: [`DEPLOYMENT.md`](DEPLOYMENT.md) and
 the script's inline comments.
 
-If the board was on the old scp layout, disable those legacy services so they
-don't double-run:
-```bash
-sudo systemctl disable --now cuda_particles mem_check_gpu 2>/dev/null   # old unit names, if present
-# then re-run setup-board.sh 01 to install the clone-path units
-```
+For board 1 specifically, the clone + services are already in place — the main
+thing `setup-board.sh 01` fixes is the hostname (currently `ubuntu` → `orin-nano-01`)
+and regenerating its golden table. It's safe to just run it.
 
 ### 1b. Log-pull account + log tree (if not already present)
 

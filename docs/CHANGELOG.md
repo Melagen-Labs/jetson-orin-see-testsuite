@@ -15,6 +15,17 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: correct bring-up manual §1 with board 1's verified state
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - Checked board 1 (`100.122.15.91`) directly and corrected §1 to match: it is
+    **already on the clone model** (all units point at `~/see-testsuite`; the
+    scp-layout "cut it over first" caveat and the stale `DEPLOYMENT.md` 2026-07-30
+    snapshot are dropped). Remaining master-prep work is just the **hostname**
+    (still `ubuntu` → `orin-nano-01`) and **beam hardening** (`kernel.panic=0`, no
+    watchdog, graphical target). Replaced the assumed current-state note with a
+    verified one.
+
 ### docs: reframe the bring-up manual around the existing master board
 
 - **`92e8759` — docs/FLASH_AND_BRINGUP.md**
