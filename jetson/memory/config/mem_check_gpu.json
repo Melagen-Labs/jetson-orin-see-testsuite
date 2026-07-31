@@ -1,8 +1,7 @@
 {
-  "target": "cpu",
+  "target": "gpu",
   "buffer_mb": "auto",
-  "auto_fraction": 0.70,
-  "mlock": false,
+  "auto_fraction": 0.50,
   "patterns": ["0x00", "0xFF", "0x55", "0xAA"],
   "hold_sweeps": 8,
   "sweep_sleep_s": 0.05,
@@ -11,8 +10,8 @@
   "iterations": 0,
 
   "log_dir": "./logs",
-  "log_name": "mem_check.jsonl",
-  "heartbeat_path": "./logs/heartbeat.txt",
+  "log_name": "mem_check_gpu.jsonl",
+  "heartbeat_path": "./logs/heartbeat_gpu.txt",
 
   "run_id": "unset",
   "jetson_id": "auto",

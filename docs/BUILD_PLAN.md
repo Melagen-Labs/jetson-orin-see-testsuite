@@ -123,15 +123,30 @@ Steps:
 5. You don't need `test_disks.py`/`test_networks.py` for your spec, but there's no harm leaving them running, they're free peripheral-dropout indicators.
 </details>
 
-### 2b. GPU memory: cuda_memtest
-Repo: https://github.com/ComputationalRadiationPhysics/cuda_memtest
-Steps:
-1. `git clone https://github.com/ComputationalRadiationPhysics/cuda_memtest.git && cd cuda_memtest`
-2. `mkdir build && cd build`
-3. `cmake -DCMAKE_CUDA_ARCHITECTURES=87 ..` (Orin Nano's Ampere compute capability). If CMake can't find the CUDA compiler, set `CUDACXX=/usr/local/cuda/bin/nvcc` first.
-4. `make`
-5. **Verify this actually builds on JetPack's CUDA/aarch64 toolchain before you're at the facility.** It was originally written for x86 discrete GPUs; you may need to patch the CMakeLists for the Tegra CUDA install path.
-6. Run it in a loop (it's designed as a one-shot memtest, so wrap it in a shell loop or cron-style relauncher), redirecting its per-test pass/fail output (it already reports which of its 11 patterns, e.g. walking-1, moving inversions, failed and at which address) into the same `memory/` log folder as SMRT.
+### 2b. GPU memory: `mem_check.py --target gpu` (CuPy) — **BUILT, deployed channel**
+Rather than build/patch the third-party `cuda_memtest` (x86-first; needs Tegra
+CMake patching), the GPU memory test is the **same `mem_check.py`** run with
+config `target:"gpu"`. It allocates a **CuPy** uint8 buffer in GPU DRAM and runs
+the identical moving-inversions loop as the CPU path (`cp.where` compare + scrub
+on-device), sized >> L2 so read-back hits DRAM. This reuses our schema-v1 logging
+and needs no separate codebase.
+
+Rationale for choosing CuPy over `cuda_memtest`:
+- One tester, one log schema, one arming model — no output-format adapter.
+- Compare/scrub run as GPU kernels; the host just sleeps and copies back the few
+  flagged bytes, so it **keeps CPU workload minimal** (a campaign requirement).
+
+Setup (see `docs/DEPENDENCIES.md` for pins, `docs/SERVICES.md` for the unit):
+1. `sudo apt-get install -y python3-pip` (JetPack strips pip out of base Python).
+2. `python3 -m pip install --user "cupy-cuda12x==13.*" "numpy>=1.22,<1.25"`
+   (a prebuilt `manylinux2014_aarch64` wheel exists — no source build).
+3. Prove detection: `python3 mem_check.py --self-test --target gpu --config config/mem_check_gpu.json`
+   (injects a flip, must log a `mem_upset` and exit 2).
+4. Deploy `mem_check_gpu.service` (`target:"gpu"`, own log `mem_check_gpu.jsonl`).
+
+> **Memory testing is GPU-only.** To minimize CPU workload, only the GPU DRAM
+> tester (2b) is deployed. The 2a CPU/system-RAM tester remains in the repo
+> (`mem_check.py --target cpu`) as a reference but its service is not installed.
 ---
 ## 3. Heartbeat
 Two separate mechanisms doing two separate jobs: local self-recovery, and external loss-of-responsiveness detection. Don't conflate them.

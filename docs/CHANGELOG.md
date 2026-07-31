@@ -13,6 +13,91 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 > reference. `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream
 > but unmodified and unbuilt; all other channels remain tentative.
 
+## 2026-07-31
+
+### cuda_particles: final-checkpoint detection, SEE state dump, crash flag + restart
+
+- **`<pending>` — final-hash detection + SEE dump-to-SSD + crash handling**
+  - `jetson/compute/cuda_particles/particles_main.cpp`:
+    - **Detection now uses only the FINAL checkpoint** of each epoch vs the
+      golden's last hash (any earlier upset cascades to the end, so the final
+      hash still flags the epoch). Drops the 19 intermediate golden compares +
+      their per-checkpoint `checksum` log spam; `--generate-golden` still writes
+      the full 20-hash table.
+    - **SEE state dump (for offline reconstruction).** Each checkpoint's full
+      particle state is buffered in RAM; on a flagged epoch the whole trajectory
+      is written to `logs/see_dumps/epoch_<N>_iter_<M>.bin` (raw float32,
+      `nCheckpoints × [pos(count) + vel(count)]`) on the **SSD**, and the
+      `see_event` record carries `dump`, `dump_checkpoints`, `dump_stride`,
+      `num_particles`, `floats_per_checkpoint` so a reference Orin can replay it
+      and count grouped SEEs. Gated by config `save_see_epochs` (default true).
+    - **Crash / unclean-shutdown handling.** A `logs/running.flag` marker is held
+      while running and removed on a clean stop; if present at startup the prior
+      instance died abnormally (CUDA abort, segfault, hang→reboot, power) → logged
+      as a `sim_fault`/`crash` SEE (`reason:"unclean_restart"`, prev pid/ts). CUDA
+      errors at the checkpoint memcpy are caught gracefully: logged as
+      `sim_fault`/`crash` with `cudaGetErrorString`, dumped, then exit 2 for a
+      fast restart (rather than the old abort).
+  - `config.{h,cpp}`, `config/particles.json`: add `save_see_epochs` bool + a
+    `getB` parser.
+  - `cuda_particles.service`: `RestartSec` 2→1 and `StartLimitIntervalSec=0`
+    (never stop restarting — crashes are expected data during a beam run).
+  - Ethernet-to-arbiter of the dumps is **tentative** (link not wired); the data
+    sits on the SSD under `logs/see_dumps/` ready for the arbiter's rsync pull.
+  - **Verified on the Orin clone:** clean 2-epoch run → exit 0, 0 dumps, marker
+    removed; corrupt-final-golden run → 2 SEEs + two 10 MB dumps + full see_event
+    records; `kill -9` mid-run → marker survives, restart logs the
+    `unclean_restart` crash SEE.
+
+### mem_check: add GPU DRAM tester (§2b); memory testing is now GPU-only
+
+- **`<pending>` — mem_check.py GPU backend + gpu config/service + docs**
+  - `jetson/memory/mem_check.py`: the moving-inversions tester now selects its
+    backend from config `target`. `target:"gpu"` (channel 2b) allocates a **CuPy**
+    uint8 buffer in **GPU DRAM** and runs the exact same paint / hold / read-back /
+    scrub loop as the CPU path — the array module (`xp`) is numpy for cpu, CuPy for
+    gpu, so the detection logic is identical. Compare + scrub run as GPU kernels
+    (`cp.where` on-device) with a `sync()` per pass; only the capped handful of
+    flagged bytes are copied to the host — **keeps CPU workload minimal**. CuPy is
+    imported lazily; records carry a `target` field; a `--target {cpu,gpu}` CLI
+    flag overrides config. Start record now uses generic `mem_total_mb` /
+    `mem_avail_mb` (were `ram_*`).
+  - `config/mem_check_gpu.json` (**new**): `target:"gpu"`, own log
+    (`mem_check_gpu.jsonl`) + heartbeat, `auto_fraction:0.50` (lower than the CPU
+    0.70 to leave GPU DRAM headroom for `cuda_particles` §1a running concurrently).
+    `config/mem_check.json` gains explicit `target:"cpu"` + `log_name`.
+  - `mem_check_gpu.service` (**new**): runs `mem_check.py --config
+    mem_check_gpu.json`, sets `HOME` so `python3` finds CuPy in `~/.local`, shares
+    the `memory/ARMED` flag with the (undeployed) CPU unit.
+  - **GPU-only pivot:** memory testing is now GPU-only to minimize CPU workload.
+    The §2a CPU tester stays in the repo (code + `mem_check.service`) as
+    reference, but is no longer deployed: `scripts/setup-board.sh` installs
+    `mem_check_gpu.service` (not `mem_check.service`) and now also installs the
+    CuPy deps; `docs/SERVICES.md` documents the GPU unit + the disable-CPU swap.
+  - **Verified on the Orin:** `mem_check.py --self-test --target gpu` allocated a
+    GPU buffer, caught the injected flip at address `0x3039` (`xor:0x01`,
+    `target:"gpu"`), emitted schema-v1 records, and exited 2.
+
+### deps: install CuPy on the DUT for §2b GPU memory test + new `DEPENDENCIES.md`
+
+- **`<pending>` — docs/DEPENDENCIES.md (new) + docs/CHANGELOG.md**
+  - Installed CuPy on the Jetson to enable the §2b GPU-memory tester (the CuPy
+    extension of `mem_check.py`). `pip`/`ensurepip` are stripped from JetPack's
+    base Python, so `sudo apt-get install -y python3-pip` was run first (by the
+    board operator), then `python3 -m pip install --user "cupy-cuda12x==13.*"
+    "numpy>=1.22,<1.25"`.
+  - **Version pins matter:** CuPy 14 requires numpy `>=2.0`, which shadows the
+    system numpy 1.21.5 in `~/.local` and breaks the JetPack SciPy (built against
+    numpy 1.x) — `import cupy` then crashes via `cupyx` → SciPy. Pinning CuPy
+    `==13.*` + numpy `1.24.4` (inside SciPy's `<1.25` range) keeps the whole
+    board consistent. Verified: 256 MB GPU allocation + injected-flip detection
+    via `cp.where` both work on the Orin GPU.
+  - **`docs/DEPENDENCIES.md` (new):** single catalog of everything the project
+    downloads/installs — toolchain (Python, CUDA 12.6, `python3-pip`), DUT Python
+    packages (numpy, cupy-cuda12x, fastrlock), arbiter packages (pyserial), and
+    vendored third-party — each with purpose and pin rationale. To be updated in
+    the same commit as any future dependency change.
+
 ## 2026-07-30
 
 ### fleet: one-shot `setup-board.sh` + per-board (git-ignored) golden

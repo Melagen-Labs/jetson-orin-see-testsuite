@@ -3,8 +3,13 @@
 Each DUT-side workload can run as a **systemd service** so the operating system
 keeps it alive without anyone babysitting a terminal. This covers install,
 the **ARMED** arming model, and how to stop it. It currently applies to the two
-built-and-verified channels — `cuda_particles` (compute, §1a) and `mem_check`
-(CPU/system RAM, §2a) — and the same pattern will extend to the others.
+deployed channels — `cuda_particles` (compute, §1a) and `mem_check` in **GPU
+DRAM** mode (§2b) — and the same pattern will extend to the others.
+
+> **Memory testing is GPU-only.** The campaign minimizes CPU workload, so only
+> the GPU DRAM tester (`mem_check_gpu.service`, `target:"gpu"`) is deployed. The
+> CPU/system-RAM tester (§2a) is the same `mem_check.py` with `target:"cpu"` and
+> remains in the repo, but its service is **not** installed or enabled.
 
 ## What a service gives you
 
@@ -50,17 +55,32 @@ systemctl status cuda_particles.service --no-pager
 ```
 (Needs the committed golden table at `data/golden_hashes.txt`, already in place.)
 
-### CPU/system RAM — `mem_check`
+### GPU DRAM — `mem_check` (`target:"gpu"`, §2b)
+Requires CuPy on the board first (see `docs/DEPENDENCIES.md`):
 ```bash
-sudo cp /home/melagen/see-testsuite/jetson/memory/mem_check.service /etc/systemd/system/mem_check.service
+sudo apt-get install -y python3-pip
+python3 -m pip install --user "cupy-cuda12x==13.*" "numpy>=1.22,<1.25"
+```
+Then install the GPU memory unit:
+```bash
+sudo cp /home/melagen/see-testsuite/jetson/memory/mem_check_gpu.service /etc/systemd/system/mem_check_gpu.service
 sudo systemctl daemon-reload
-sudo systemctl enable mem_check.service
+sudo systemctl enable mem_check_gpu.service
 touch /home/melagen/see-testsuite/jetson/memory/ARMED
-sudo systemctl start mem_check.service
-systemctl status mem_check.service --no-pager
+sudo systemctl start mem_check_gpu.service
+systemctl status mem_check_gpu.service --no-pager
 ```
 (In the clone, `mem_check.py` resolves `shared/event_log.py` via `../../shared` —
-no `event_log.py` copy needed.)
+no `event_log.py` copy needed. The unit sets `HOME` so `python3` finds CuPy in
+`~/.local`.)
+
+> The CPU/system-RAM tester (§2a, `mem_check.service`, `target:"cpu"`) is **not**
+> deployed — memory testing is GPU-only to minimize CPU workload. To swap a board
+> that already runs the 2a unit over to GPU-only:
+> ```bash
+> sudo systemctl disable --now mem_check.service   # stop + unwire the CPU unit
+> ```
+> then run the GPU install above.
 
 ## Stop / disarm (run once, when done testing)
 ```bash

@@ -4,9 +4,14 @@
 # Run ONCE on each new board, interactively (so sudo can prompt for a password):
 #   ./scripts/setup-board.sh 03        # brings up this board as orin-nano-03
 #
-# It gives the board its identity, syncs the code, builds the compute channel,
-# generates this board's own golden table, arms both channels, and installs the
-# systemd services. Re-running is safe: it just updates, rebuilds, and re-arms.
+# It gives the board its identity, syncs the code, installs the GPU deps, builds
+# the compute channel, generates this board's own golden table, arms the channels,
+# and installs the systemd services. Re-running is safe: it just updates,
+# reinstalls, rebuilds, and re-arms.
+#
+# Memory testing is GPU-only (channel 2b, CuPy on GPU DRAM). The CPU/system-RAM
+# tester (channel 2a) still exists in the repo but is NOT deployed -- the campaign
+# minimizes CPU workload, so no CPU memory service is installed or enabled.
 
 set -euo pipefail   # exit on any error / unset variable / failed pipe stage
 
@@ -18,51 +23,63 @@ REPO_URL="https://github.com/Reece122/jetson-orin-see-testsuite.git"
 REPO="${HOME}/see-testsuite"                         # clone lives here on every board
 CUDA_BIN="/usr/local/cuda/bin"                       # JetPack CUDA toolchain (nvcc)
 COMPUTE="${REPO}/jetson/compute/cuda_particles"      # GPU compute channel dir
-MEMORY="${REPO}/jetson/memory"                       # CPU/RAM memory channel dir
+MEMORY="${REPO}/jetson/memory"                        # memory channel dir (GPU DRAM tester, 2b)
 
 # ---- 1. identity -----------------------------------------------------------
 # Every log line's jetson_id is derived from the hostname (jetson_id:"auto"),
 # so naming the board is what makes its logs identifiable in the fleet.
-echo "[1/6] set hostname -> ${HOSTNAME_NEW}"
+echo "[1/7] set hostname -> ${HOSTNAME_NEW}"
 sudo hostnamectl set-hostname "${HOSTNAME_NEW}"
 
 # ---- 2. code ---------------------------------------------------------------
 # Clone the repo on first run; on later runs just fast-forward to the latest commit.
-echo "[2/6] sync repo at ${REPO}"
+echo "[2/7] sync repo at ${REPO}"
 if [ -d "${REPO}/.git" ]; then
   git -C "${REPO}" pull --ff-only
 else
   git clone "${REPO_URL}" "${REPO}"
 fi
 
-# ---- 3. build --------------------------------------------------------------
+# ---- 3. GPU deps -----------------------------------------------------------
+# The GPU memory tester (2b) needs CuPy. JetPack strips pip out of the base
+# Python, so install python3-pip first, then CuPy into the user site (~/.local,
+# no sudo). Pins matter -- see docs/DEPENDENCIES.md: CuPy 14 pulls numpy 2.x and
+# breaks the system SciPy, so stay on CuPy 13 + numpy <1.25.
+echo "[3/7] install GPU deps (python3-pip + CuPy)"
+sudo apt-get install -y python3-pip
+python3 -m pip install --user "cupy-cuda12x==13.*" "numpy>=1.22,<1.25"
+
+# ---- 4. build --------------------------------------------------------------
 # The compute channel is CUDA C++ and must be compiled on the board.
-echo "[3/6] build cuda_particles"
+echo "[4/7] build cuda_particles"
 export PATH="${CUDA_BIN}:${PATH}"                    # put nvcc on PATH for cmake
 cmake -S "${COMPUTE}" -B "${COMPUTE}/build" -DCMAKE_BUILD_TYPE=Release   # configure
 cmake --build "${COMPUTE}/build" -j                  # compile (all cores)
 
-# ---- 4. golden table -------------------------------------------------------
+# ---- 5. golden table -------------------------------------------------------
 # The golden hashes are device+build specific, so each board generates its OWN
 # reference here, once, with no beam present. (This file is git-ignored.)
-echo "[4/6] generate this board's golden table"
+echo "[5/7] generate this board's golden table"
 ( cd "${COMPUTE}" && ./build/cuda_particles --config config/particles.json --generate-golden )
 
-# ---- 5. arm ----------------------------------------------------------------
-# Both services are gated on a persistent ARMED flag so they only run during a
-# campaign. Creating it now means every future boot (incl. a crash reboot) starts
-# them; delete these files to stand the board down. (See docs/SERVICES.md.)
-echo "[5/6] arm both channels"
+# ---- 6. arm ----------------------------------------------------------------
+# Both deployed services are gated on a persistent ARMED flag so they only run
+# during a campaign. Creating it now means every future boot (incl. a crash
+# reboot) starts them; delete these files to stand the board down. The GPU memory
+# unit shares the memory-dir ARMED flag. (See docs/SERVICES.md.)
+echo "[6/7] arm compute + gpu-memory channels"
 touch "${COMPUTE}/ARMED" "${MEMORY}/ARMED"
 
-# ---- 6. services -----------------------------------------------------------
-# Install the unit files, reload systemd, and enable+start both channels.
-echo "[6/6] install + start services"
+# ---- 7. services -----------------------------------------------------------
+# Install the unit files, reload systemd, and enable+start both DEPLOYED channels:
+# compute (cuda_particles) and GPU memory (mem_check_gpu). The CPU memory unit is
+# intentionally not installed.
+echo "[7/7] install + start services"
 sudo cp "${COMPUTE}/cuda_particles.service" /etc/systemd/system/cuda_particles.service
-sudo cp "${MEMORY}/mem_check.service"       /etc/systemd/system/mem_check.service
+sudo cp "${MEMORY}/mem_check_gpu.service"   /etc/systemd/system/mem_check_gpu.service
 sudo systemctl daemon-reload                         # re-read unit files
-sudo systemctl enable --now cuda_particles.service mem_check.service   # boot-start + start now
+sudo systemctl enable --now cuda_particles.service mem_check_gpu.service   # boot-start + start now
 
 echo "done -- status:"
-systemctl status cuda_particles.service mem_check.service --no-pager || true
+systemctl status cuda_particles.service mem_check_gpu.service --no-pager || true
 echo "NOTE: log out and back in for the new hostname to appear in your shell prompt."

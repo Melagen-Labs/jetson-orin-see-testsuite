@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
-"""mem_check.py -- CPU/system RAM pattern tester for Jetson SEE testing (channel 2a).
+"""mem_check.py -- RAM pattern tester for Jetson SEE testing (channels 2a/2b).
 
-Purpose-built, schema-v1-native detector for the CPU-attached path into the
-Orin Nano's shared LPDDR5. It holds a large buffer full of a known bit pattern
-and repeatedly reads it back; any byte that no longer matches is a candidate
-single-event upset, logged with its address and the expected/actual/xor bytes.
+Purpose-built, schema-v1-native detector for the Orin Nano's shared LPDDR5. It
+runs on either memory datapath, selected by config `target`:
+  * "cpu" (channel 2a): a numpy uint8 buffer in system RAM -- the CPU-attached
+    path into DRAM.
+  * "gpu" (channel 2b): a CuPy uint8 buffer in GPU DRAM -- the GPU-attached path.
+    On the Orin the DRAM is physically shared, but the GPU path exercises the
+    GPU memory controller and L2; the buffer is sized >> L2 so read-back hits
+    DRAM, not cache. CuPy is imported lazily so a board without it can still run
+    the 2a (CPU) test. See docs/DEPENDENCIES.md for the CuPy install/pins.
+
+It holds a large buffer full of a known bit pattern and repeatedly reads it back;
+any byte that no longer matches is a candidate single-event upset, logged with
+its address and the expected/actual/xor bytes.
 
 Design (mirrors the moving-inversions method NASA SMRT uses, but emits this
 repo's frozen event schema directly rather than wrapping SMRT):
-  * Allocate one contiguous numpy uint8 buffer of `buffer_mb` megabytes.
+  * Allocate one contiguous uint8 buffer of `buffer_mb` megabytes (numpy in
+    system RAM for target "cpu"; CuPy in GPU DRAM for target "gpu").
   * For each pattern in `patterns` (0x00, 0xFF, 0x55, 0xAA -- all-zeros,
     all-ones, and both checkerboards, so a bit stuck/flipped in EITHER state is
     caught), fill the buffer, then do `hold_sweeps` read-back verification passes
@@ -61,7 +71,8 @@ def _handle_signal(signum, frame):
 
 
 DEFAULTS = {
-    "buffer_mb": 2048,                       # buffer size; leave RAM headroom
+    "target": "cpu",                         # "cpu" (2a, numpy/RAM) or "gpu" (2b, CuPy/GPU DRAM)
+    "buffer_mb": 2048,                       # buffer size; leave memory headroom ("auto" also ok)
     "patterns": ["0x00", "0xFF", "0x55", "0xAA"],
     "hold_sweeps": 8,                        # verify passes before repainting
     "sweep_sleep_s": 0.05,                   # dwell between sweeps (exposure)
@@ -69,6 +80,7 @@ DEFAULTS = {
     "max_report": 64,                        # cap anomaly records per sweep
     "iterations": 0,                         # 0 = run forever (counts sweeps)
     "log_dir": "./logs",
+    "log_name": "mem_check.jsonl",           # per-target log file (gpu uses its own)
     "heartbeat_path": "./logs/heartbeat.txt",
     "run_id": "unset",
     "jetson_id": "orin-nano-01",
@@ -129,6 +141,17 @@ def read_meminfo_mb():
     return total, avail
 
 
+def gpu_mem_mb():
+    """Return (total, free) GPU DRAM in MB via CuPy, in the same (total, avail)
+    order as read_meminfo_mb. Requires CuPy (target 'gpu' only). On the Orin the
+    GPU shares the LPDDR5 with the CPU, so 'total' is the whole board's DRAM and
+    'free' reflects whatever the OS + any co-running GPU job (e.g. cuda_particles,
+    §1a) currently leave available."""
+    import cupy as cp
+    free, total = cp.cuda.runtime.memGetInfo()   # CUDA returns (free, total) bytes
+    return total // (1024 * 1024), free // (1024 * 1024)
+
+
 def resolve_buffer_mb(cfg, ram_avail_mb):
     """Resolve buffer_mb: a fixed integer, or "auto" -> a fraction of free RAM.
 
@@ -170,11 +193,15 @@ def main():
     global g_stop
     ap = argparse.ArgumentParser(description="CPU/system RAM SEE pattern tester (channel 2a)")
     ap.add_argument("--config", default="config/mem_check.json")
+    ap.add_argument("--target", choices=("cpu", "gpu"),
+                    help="override config `target` (cpu=RAM/2a, gpu=GPU DRAM/2b)")
     ap.add_argument("--self-test", action="store_true",
                     help="small buffer + injected bit flip to prove detection")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.target:
+        cfg["target"] = args.target
     # Fleet identity: jetson_id "auto" -> the board's hostname, so one config
     # file is correct on every DUT (set each board's hostname to orin-nano-0N).
     if str(cfg.get("jetson_id", "")).strip().lower() == "auto":
@@ -187,9 +214,30 @@ def main():
         cfg["fault_inject_sweep"] = 2
         cfg["fault_inject_addr"] = 12345
 
-    ram_total_mb, ram_avail_mb = read_meminfo_mb()
-    buffer_mb = resolve_buffer_mb(cfg, ram_avail_mb)
-    coverage_pct = round(100.0 * buffer_mb / ram_total_mb, 1) if ram_total_mb else None
+    # --- select the memory backend from config `target` ---------------------
+    # xp is the array module (numpy for CPU, CuPy for GPU); the pattern/verify/
+    # scrub loop below is written against xp so it is identical for both paths.
+    # sync() flushes the CUDA stream on GPU (a no-op on CPU) so async device work
+    # is complete before we act on results or move on.
+    target = str(cfg.get("target", "cpu")).strip().lower()
+    if target == "gpu":
+        import cupy as xp                        # GPU array lib (see docs/DEPENDENCIES.md)
+        mem_total_mb, mem_avail_mb = gpu_mem_mb()
+
+        def sync():
+            xp.cuda.Stream.null.synchronize()
+    elif target == "cpu":
+        xp = np
+        mem_total_mb, mem_avail_mb = read_meminfo_mb()
+
+        def sync():
+            pass
+    else:
+        sys.stderr.write("[mem_check] unknown target %r; expected 'cpu' or 'gpu'\n" % target)
+        return 3
+
+    buffer_mb = resolve_buffer_mb(cfg, mem_avail_mb)
+    coverage_pct = round(100.0 * buffer_mb / mem_total_mb, 1) if mem_total_mb else None
     nbytes = buffer_mb * 1024 * 1024
     patterns = [int(p, 16) if isinstance(p, str) else int(p) for p in cfg["patterns"]]
     K_hold = max(1, int(cfg["hold_sweeps"]))
@@ -198,21 +246,25 @@ def main():
     limit = int(cfg["iterations"])
 
     os.makedirs(cfg["log_dir"], exist_ok=True)
-    log_path = os.path.join(cfg["log_dir"], "mem_check.jsonl")
+    log_path = os.path.join(cfg["log_dir"], cfg["log_name"])
     fp = open(log_path, "a", encoding="utf-8")
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    # Allocate the buffer up front so an OOM shows immediately, not mid-run.
-    buf = np.empty(nbytes, dtype=np.uint8)
-    locked = try_mlock(buf) if cfg.get("mlock") else False
+    # Allocate the buffer up front so an OOM shows immediately, not mid-run. For
+    # gpu this is a device allocation; sync so an allocation failure surfaces here.
+    buf = xp.empty(nbytes, dtype=xp.uint8)
+    sync()
+    # mlock pins host RAM in place; it has no meaning for a GPU allocation.
+    locked = try_mlock(buf) if (target == "cpu" and cfg.get("mlock")) else False
 
     emit(fp, cfg, "start", "info", {
         "test": "moving_inversions",
+        "target": target,
         "buffer_mb": buffer_mb,
-        "ram_total_mb": ram_total_mb,
-        "ram_avail_mb": ram_avail_mb,
+        "mem_total_mb": mem_total_mb,
+        "mem_avail_mb": mem_avail_mb,
         "coverage_pct": coverage_pct,
         "mlock": locked,
         "patterns": [("0x%02x" % p) for p in patterns],
@@ -226,7 +278,7 @@ def main():
 
     while not g_stop:
         for val in patterns:
-            buf[:] = np.uint8(val)             # paint the pattern
+            buf[:] = xp.uint8(val)             # paint the pattern
             for _ in range(K_hold):
                 if g_stop:
                     break
@@ -234,28 +286,32 @@ def main():
                 # Optional detection self-test: flip one bit at the target sweep.
                 if cfg["fault_inject_sweep"] and (sweeps + 1) == int(cfg["fault_inject_sweep"]):
                     addr = int(cfg["fault_inject_addr"]) % nbytes
-                    buf[addr] ^= np.uint8(0x01)
+                    buf[addr] ^= xp.uint8(0x01)
 
-                # Read-back verify. Scan in fixed-size CHUNKs so the temporary
+                # Read-back verify. Scan in fixed-size CHUNKs so the transient
                 # comparison mask stays small: `buf != val` over the whole buffer
-                # would allocate a full second buffer (2x RAM) and OOM at large
-                # `buffer_mb`. Peak extra memory here is one CHUNK, not one buffer.
+                # would allocate a full second buffer (2x memory) and OOM at large
+                # `buffer_mb` -- this holds for GPU DRAM as well. Peak extra memory
+                # here is one CHUNK, not one buffer.
                 total_mism = 0
                 emitted = 0
                 for off in range(0, nbytes, VERIFY_CHUNK_BYTES):
                     seg = buf[off:off + VERIFY_CHUNK_BYTES]   # view, no copy
-                    idx = np.where(seg != np.uint8(val))[0]
+                    idx = xp.where(seg != xp.uint8(val))[0]
                     n = int(idx.size)
                     if n == 0:
                         continue
                     corruption_seen = True
                     total_mism += n
+                    # On gpu, idx/seg live on the device; .tolist()/int() copy only
+                    # the capped handful of flagged bytes back to the host.
                     for i in idx.tolist():
                         if emitted >= max_report:
                             break
                         actual = int(seg[i])
                         emit(fp, cfg, "mem_upset", "anomaly", {
                             "test": "moving_inversions",
+                            "target": target,
                             "address": ("0x%x" % (off + i)),
                             "pattern": ("0x%02x" % val),
                             "expected": ("0x%02x" % val),
@@ -264,11 +320,13 @@ def main():
                             "sweep": sweeps + 1,
                         })
                         emitted += 1
-                    seg[idx] = np.uint8(val)   # vectorized scrub -> counted once
+                    seg[idx] = xp.uint8(val)   # vectorized scrub -> counted once
+                sync()                        # ensure the compare + scrub completed
                 upsets += total_mism
                 if total_mism > emitted:
                     emit(fp, cfg, "mem_upset_overflow", "anomaly", {
                         "test": "moving_inversions",
+                        "target": target,
                         "pattern": ("0x%02x" % val),
                         "reported": emitted,
                         "total_mismatches": total_mism,
@@ -281,6 +339,7 @@ def main():
                 if sweeps % ckpt == 0:
                     emit(fp, cfg, "checkpoint", "ok", {
                         "test": "moving_inversions",
+                        "target": target,
                         "sweep": sweeps, "upsets": upsets,
                         "pattern": ("0x%02x" % val),
                     })
@@ -294,6 +353,7 @@ def main():
 
     emit(fp, cfg, "stop", "info", {
         "test": "moving_inversions",
+        "target": target,
         "sweeps": sweeps, "upsets": upsets,
         "corruption_seen": corruption_seen,
     })
