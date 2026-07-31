@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### logs: standardize DUT log output to /var/log/radtest/<channel> for arbiter pull
 
-- **`<pending>` — mem_check_gpu.json + particles.json log paths**
+- **`3efd3c7` — mem_check_gpu.json + particles.json log paths**
   - Both deployed channels now write to the canonical DUT log location the
     arbiter's `pull_logs.sh` expects, instead of `./logs` inside the clone:
     memory → `/var/log/radtest/memory`, compute → `/var/log/radtest/compute`
