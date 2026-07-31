@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: mark Phase 4 (log pull) verified from the operator laptop
 
-- **`<pending>` — docs/INTEGRATION_TEST.md**
+- **`c74e766` — docs/INTEGRATION_TEST.md**
   - Phase 4 auth + transfer **verified on 2026-07-31**: the operator's Windows
     laptop ed25519 pubkey was installed in `radpull`'s `authorized_keys`, and both
     `ssh radpull@… ls /var/log/radtest` and `scp -r … /var/log/radtest` succeeded
