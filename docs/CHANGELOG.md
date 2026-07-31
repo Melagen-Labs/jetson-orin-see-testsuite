@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: crash-recovery runbook — arm watchdog, fast panic reboot, headless
 
-- **`<pending>` — docs/CRASH_RECOVERY.md (new)**
+- **`c102490` — docs/CRASH_RECOVERY.md (new)**
   - Measured the board's recovery posture (`systemd-analyze`, watchdog/panic
     state) and found two "hang forever" gaps: **no hardware watchdog is running**
     (a hard board hang/latchup never auto-reboots) and **`kernel.panic=0`** (a
