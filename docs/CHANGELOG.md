@@ -28,8 +28,14 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
     (`git pull`, no more per-board scp), one hashed master image for the frozen
     campaign; per-DUT hostname + own golden table. Linked from README.
   - `.gitignore`: ignore per-board `ARMED` flag.
-  - Context: campaign scales to **7 Jetson Orin Nano DUTs**; the Nano can reach
-    GitHub (clone/pull viable). Verified on-target: see follow-up entry.
+  - Context: campaign scales to **7 Jetson Orin Nano DUTs**.
+  - **Verified on-target:** cloned the repo to `~/see-testsuite`, built
+    `cuda_particles` in the clone (BUILD OK), and both tools logged
+    `jetson_id:"ubuntu"` (the hostname) from `"auto"` — confirming the fleet
+    identity works end-to-end. Notably, the *old standalone* `~/cuda_particles`
+    deployment logged the stale `orin-nano-01` because its `config.cpp` had
+    **drifted** from the repo (10 vs 9 `getStr`) — a live demonstration of the
+    scp-drift the clone model removes.
 
 ### docs: record DRAM-ECC check + memory check-frequency rationale (§2a)
 
