@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### services: repoint both units to the git clone (`~/see-testsuite`)
 
-- **`PENDING11` — cuda_particles/mem_check .service → clone paths**
+- **`7f8c335` — cuda_particles/mem_check .service → clone paths**
   - `jetson/compute/cuda_particles/cuda_particles.service` and
     `jetson/memory/mem_check.service`: `WorkingDirectory`, `ExecStart`, and
     `ConditionPathExists` repointed from the old standalone dirs
