@@ -558,6 +558,7 @@ class TestCoordinatorApp(ttk.Frame):
             ) as handle:
                 writer = csv.writer(handle)
                 writer.writerow(["field", "value"])
+                writer.writerow(["jetson_id", summary.get("jetson_id", "")])
                 writer.writerow(["run_id", summary.get("run_id", "")])
                 writer.writerow(
                     ["beam_energy", summary.get("beam_energy", "")]
