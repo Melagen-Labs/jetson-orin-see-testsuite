@@ -16,10 +16,12 @@ Contract (arbiter -> DUT), one JSON object per TCP connection:
       "sent_at_utc": "2026-07-31T15:00:00.000Z"
     }
 
-Reply (DUT -> arbiter), one JSON object + newline:
-    {"protocol_version":1,"request_id":<echo>,"status":"ok"|"error",
-     "detail":<str>,"jetson_id":<hostname>,"channels":[...],
-     "handled_at_utc":<iso>}
+Reply (DUT -> arbiter), one JSON object + newline. The coordinator's GUI accepts
+a reply only when status == "ACCEPTED" (coordinator/ui.py::_validate_response) and
+shows the "error" field otherwise, so we answer in that vocabulary:
+    {"protocol_version":1,"request_id":<echo>,"status":"ACCEPTED"|"REJECTED",
+     "detail":<str>,"error":<str, only when REJECTED>,"jetson_id":<hostname>,
+     "channels":[...],"handled_at_utc":<iso>}
 
 Behaviour:
   * START_TEST -> validate; write the beam/shield metadata into each test
@@ -96,6 +98,13 @@ REQUIRED_START_FIELDS = (
 )
 # STOP_TEST needs only enough to identify the request (no beam params to stop).
 REQUIRED_STOP_FIELDS = ("protocol_version", "command", "request_id", "sent_at_utc")
+
+# The coordinator's GUI accepts a reply ONLY if status == "ACCEPTED"
+# (coordinator/ui.py::_validate_response); any other value is treated as a
+# rejection and it displays the reply's "error" field. So we speak that
+# vocabulary: "ACCEPTED" on success, "REJECTED" + an "error" string on failure.
+STATUS_ACCEPTED = "ACCEPTED"
+STATUS_REJECTED = "REJECTED"
 
 
 def load_config(path):
@@ -240,14 +249,16 @@ def handle_message(raw, cfg, state, lock):
     try:
         msg = json.loads(raw)
     except ValueError as exc:
-        reply.update(request_id=None, status="error", detail="invalid JSON: %s" % exc)
+        detail = "invalid JSON: %s" % exc
+        reply.update(request_id=None, status=STATUS_REJECTED, detail=detail, error=detail)
         log_control(cfg, {"event": "reject", "reason": "invalid_json"})
         return reply
 
     reply["request_id"] = msg.get("request_id")
     cmd, errors = validate(msg, cfg)
     if errors:
-        reply.update(status="error", detail="; ".join(errors))
+        detail = "; ".join(errors)
+        reply.update(status=STATUS_REJECTED, detail=detail, error=detail)
         log_control(cfg, {"event": "reject", "command": cmd,
                           "request_id": msg.get("request_id"), "errors": errors})
         return reply
@@ -255,7 +266,7 @@ def handle_message(raw, cfg, state, lock):
     # Idempotency: the arbiter may retry a request_id; don't re-act on a repeat.
     with lock:
         if msg["request_id"] and msg["request_id"] == state.get("last_request_id"):
-            reply.update(status="ok", detail="duplicate request_id; already handled",
+            reply.update(status=STATUS_ACCEPTED, detail="duplicate request_id; already handled",
                          channels=state.get("last_channels", []))
             return reply
         state["last_request_id"] = msg["request_id"]
@@ -263,17 +274,21 @@ def handle_message(raw, cfg, state, lock):
     if cmd == "START_TEST":
         meta, results = do_start(msg, cfg)
         all_ok = all(r["ok"] for r in results)
-        reply.update(status="ok" if all_ok else "error",
-                     detail="started" if all_ok else "one or more channels failed",
-                     applied=meta, channels=results)
+        detail = "started" if all_ok else "one or more channels failed to start"
+        reply.update(status=STATUS_ACCEPTED if all_ok else STATUS_REJECTED,
+                     detail=detail, applied=meta, channels=results)
+        if not all_ok:
+            reply["error"] = detail
         log_control(cfg, {"event": "start_test", "request_id": msg["request_id"],
                           "applied": meta, "channels": results, "ok": all_ok})
     else:  # STOP_TEST
         results = do_stop(cfg)
         all_ok = all(r["ok"] for r in results)
-        reply.update(status="ok" if all_ok else "error",
-                     detail="stopped" if all_ok else "one or more channels failed",
-                     channels=results)
+        detail = "stopped" if all_ok else "one or more channels failed to stop"
+        reply.update(status=STATUS_ACCEPTED if all_ok else STATUS_REJECTED,
+                     detail=detail, channels=results)
+        if not all_ok:
+            reply["error"] = detail
         # target_request_id: the coordinator's STOP_TEST names which START to stop
         # (its own request_id is a fresh uuid). We stop all channels regardless, but
         # log it so a stop can be correlated back to its start.

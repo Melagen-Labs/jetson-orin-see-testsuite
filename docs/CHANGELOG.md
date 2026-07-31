@@ -15,6 +15,24 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### control: reply status must be ACCEPTED/REJECTED for the coordinator GUI
+
+- **`<pending>` — test_control.py, CONTROL_INTERFACE.md**
+  - **Bug found by running the real coordinator GUI against the board:** START
+    came back "Receiver rejected the command". Root cause — `coordinator/ui.py::
+    _validate_response` accepts a reply **only if `status == "ACCEPTED"`** and
+    otherwise shows the reply's `error` field; our receiver was replying
+    `status: "ok"`/`"error"`, so the GUI treated every reply as a rejection.
+  - Our headless round-trip (using the same `TcpTransport`) had passed because
+    `TcpTransport.send` only validates that `request_id` echoes — the `ACCEPTED`
+    check lives in the UI layer, above the transport. Lesson: a raw-socket test is
+    necessary but not sufficient; the GUI is the real acceptance gate.
+  - Fix (ours — we adapt to the coordinator's contract): reply `status: "ACCEPTED"`
+    on success and `status: "REJECTED"` + an `error` string on failure, across all
+    paths (invalid JSON, validation errors, start, stop; duplicate = ACCEPTED). Doc
+    updated with the vocabulary and the why. Requires redeploying test_control on
+    the board (`git pull` + `systemctl restart test_control.service`).
+
 ### docs: mark Phase 4 (log pull) verified from the operator laptop
 
 - **`c74e766` — docs/INTEGRATION_TEST.md**

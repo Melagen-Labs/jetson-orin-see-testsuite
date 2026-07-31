@@ -53,7 +53,7 @@ A request failing any rule is **rejected** (no action taken) with an `error` rep
 {
   "protocol_version": 1,
   "request_id": "unique-request-id",
-  "status": "ok",
+  "status": "ACCEPTED",
   "detail": "started",
   "jetson_id": "orin-nano-03",
   "applied": {"run_id": "unique-request-id", "beam_energy": "100MeV", "shield_config": "MLC1_12mm"},
@@ -62,8 +62,14 @@ A request failing any rule is **rejected** (no action taken) with an `error` rep
 }
 ```
 
-`status` is `error` if the request was invalid or any channel failed to start/stop
-(`detail`/`channels` say which).
+**`status` is `ACCEPTED` on success, `REJECTED` on failure** (invalid request or any
+channel failed to start/stop). This vocabulary is required by the coordinator's GUI
+— `coordinator/ui.py::_validate_response` treats any status other than `ACCEPTED`
+as a rejection and surfaces the reply's **`error`** field, which we include on every
+`REJECTED` reply. (`TcpTransport.send` itself only checks that `request_id` echoes;
+the `ACCEPTED` check lives in the UI layer, so a raw socket test can pass while the
+GUI still rejects — which is exactly how this was first missed.) The per-channel
+`ok`/`detail` entries say which channel failed.
 
 ## What START_TEST does on the DUT
 
