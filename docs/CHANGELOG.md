@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: §4 acceptance test is now GUI-driven with a concrete CSV expected-result
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`3c32b7b` — docs/FLASH_AND_BRINGUP.md**
   - Reframed §4 so the **acceptance test mirrors beam day**: drive the run from the
     real **coordinator GUI** (Start → run → Stop → read result), with the four
     interface checks demoted to fault-isolation diagnostics and the bare-laptop
