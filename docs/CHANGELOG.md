@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### setup: fold SSH-host-key + machine-id regen into setup-board.sh; manual to match
 
-- **`<pending>` — scripts/setup-board.sh**
+- **`a668bc8` — scripts/setup-board.sh**
   - Step 1 (identity) now regenerates the two remaining per-clone items that need
     no operator input: **SSH host keys** (`rm -f /etc/ssh/ssh_host_* && ssh-keygen
     -A && systemctl restart ssh`, step 1b) and the **machine-id** (`rm -f
@@ -26,7 +26,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
     command** — no manual hygiene block. CLI contract unchanged (`setup-board.sh
     <NN>`). Re-running rotates the SSH host keys again (harmless; re-accept on next
     connect). Does not touch `boot_id`, so the science logs are unaffected.
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`a668bc8` — docs/FLASH_AND_BRINGUP.md**
   - §3 rewritten to match: the single `setup-board.sh NN` now covers hostname, SSH
     host keys, machine-id, and golden — the "Clone hygiene the script does NOT do"
     section is gone. Difference table updated (SSH host keys + machine-id now
