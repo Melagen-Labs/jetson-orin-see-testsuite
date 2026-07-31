@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: manual §3 — full Tailscale per-board enrolment procedure
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`80783cd` — docs/FLASH_AND_BRINGUP.md**
   - §3 previously only *mentioned* Tailscale ("each board needs its own
     `tailscale up`"). Added a dedicated, clearly-flagged subsection with the real
     procedure and the clone gotcha: because the master (board 1) is already
