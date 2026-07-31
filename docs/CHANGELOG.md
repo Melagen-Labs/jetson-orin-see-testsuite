@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: add INTEGRATION_TEST.md (DUT↔arbiter over-Ethernet runbook)
 
-- **`<pending>` — docs/INTEGRATION_TEST.md (new)**
+- **`ffcc155` — docs/INTEGRATION_TEST.md (new)**
   - Step-by-step runbook to validate the DUT against the arbiter over a direct
     Ethernet cable: static-IP setup (Jetson `nmcli` + Windows `New-NetIPAddress`),
     test-control (TCP 5599), heartbeat (UDP 5555), and log pull (SSH/radpull), with
