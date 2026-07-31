@@ -71,6 +71,34 @@ the `ACCEPTED` check lives in the UI layer, so a raw socket test can pass while 
 GUI still rejects — which is exactly how this was first missed.) The per-channel
 `ok`/`detail` entries say which channel failed.
 
+### STOP reply — post-test `summary`
+
+A **STOP_TEST** reply also carries a `summary` block: the receiver scans each
+channel's JSONL log (`channels[].log`) for records tagged with the run's id
+(`target_request_id`, else the last START handled) and tallies single-event
+effects. The coordinator GUI uses this for its post-test popup and `test_N.csv`.
+
+```json
+"summary": {
+  "run_id": "…", "beam_energy": "100MeV", "shield_config": "MLC1_12mm",
+  "duration_s": 42.6, "records_scanned": 91, "total_sees": 3, "sees_per_s": 0.0704,
+  "by_type": {
+    "cuda_golden_mismatch": 2,   "cuda_nonfinite": 0, "cuda_anomaly": 0,
+    "cuda_shutdown": 1,          "gpu_mem_upset": 0,
+    "mem_tester_restart": 0,     "fatal_error": 0
+  }
+}
+```
+
+Each SEE is attributed to exactly one type, so `by_type` **partitions** `total_sees`.
+Counting keys on record fields, not event names: `cuda_golden_mismatch` = compute
+`checksum` with `mismatch:true`; `cuda_nonfinite` = `finite:false`; `cuda_anomaly` =
+`anomaly:true`; `gpu_mem_upset` = one per `mem_upset` record (a flipped byte);
+`cuda_shutdown`/`mem_tester_restart` = extra `start` records beyond the first (a
+service crashed and systemd restarted it mid-run); `fatal_error` = any `status:error`.
+`duration_s` is the span of the run's first→last log timestamp. Summarising is
+best-effort — a log read/parse failure yields `summary.error` and never fails STOP.
+
 ## What START_TEST does on the DUT
 
 For each configured channel (compute + GPU memory), in order:

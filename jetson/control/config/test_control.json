@@ -16,13 +16,15 @@
       "name": "compute",
       "config": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/config/particles.json",
       "armed_flag": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/ARMED",
-      "service": "cuda_particles.service"
+      "service": "cuda_particles.service",
+      "log": "/var/log/radtest/compute/cuda_particles.jsonl"
     },
     {
       "name": "memory_gpu",
       "config": "/home/melagen/see-testsuite/jetson/memory/config/mem_check_gpu.json",
       "armed_flag": "/home/melagen/see-testsuite/jetson/memory/ARMED",
-      "service": "mem_check_gpu.service"
+      "service": "mem_check_gpu.service",
+      "log": "/var/log/radtest/memory/mem_check_gpu.jsonl"
     }
   ]
 }

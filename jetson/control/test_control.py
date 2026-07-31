@@ -81,12 +81,14 @@ DEFAULTS = {
             "config": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/config/particles.json",
             "armed_flag": "/home/melagen/see-testsuite/jetson/compute/cuda_particles/ARMED",
             "service": "cuda_particles.service",
+            "log": "/var/log/radtest/compute/cuda_particles.jsonl",
         },
         {
             "name": "memory_gpu",
             "config": "/home/melagen/see-testsuite/jetson/memory/config/mem_check_gpu.json",
             "armed_flag": "/home/melagen/see-testsuite/jetson/memory/ARMED",
             "service": "mem_check_gpu.service",
+            "log": "/var/log/radtest/memory/mem_check_gpu.jsonl",
         },
     ],
 }
@@ -240,6 +242,121 @@ def log_control(cfg, record):
     sys.stdout.flush()
 
 
+# --- run summary (post-test popup / CSV data for the coordinator) -----------
+
+# Each SEE is attributed to exactly ONE type, so the per-type counts partition the
+# total (they sum to total_sees). Keys are stable ids; the coordinator maps them to
+# operator-facing labels.
+SEE_TYPES = (
+    "cuda_golden_mismatch",   # compute checksum != golden hash (bit-level divergence)
+    "cuda_nonfinite",         # compute produced NaN/Inf
+    "cuda_anomaly",           # compute values outside physical bounds
+    "cuda_shutdown",          # compute service crashed and was restarted mid-run
+    "gpu_mem_upset",          # GPU DRAM moving-inversions flipped byte
+    "mem_tester_restart",     # memory service crashed and was restarted mid-run
+    "fatal_error",            # any record with status == "error"
+)
+
+
+def _parse_ts(ts):
+    """Parse an event-log ISO-8601 'Z' timestamp to epoch seconds, or None."""
+    if not ts:
+        return None
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+            tzinfo=timezone.utc).timestamp()
+    except (ValueError, TypeError):
+        try:
+            return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+
+
+def summarize_run(cfg, run_id):
+    """Scan each channel's JSONL log for records tagged with this run_id and return
+    a summary dict: duration, total SEEs, SEEs/sec, and a per-type breakdown. The
+    counting keys on record FIELDS (mismatch/finite/anomaly/upsets), so it does not
+    depend on exact event names. Best-effort: any read/parse failure is skipped, so
+    STOP is never blocked by reporting."""
+    counts = {k: 0 for k in SEE_TYPES}
+    start_records = {}          # channel -> number of "start" records seen for run
+    beam_energy = shield_config = None
+    ts_min = ts_max = None
+    matched = 0
+
+    for ch in cfg.get("channels", []):
+        path = ch.get("log")
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fp:
+                for line in fp:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    if rec.get("run_id") != run_id:
+                        continue
+                    matched += 1
+                    channel = rec.get("channel")
+                    event = rec.get("event")
+                    status = rec.get("status")
+
+                    if not beam_energy and rec.get("beam_energy"):
+                        beam_energy = rec.get("beam_energy")
+                    if not shield_config and rec.get("shield_config"):
+                        shield_config = rec.get("shield_config")
+
+                    t = _parse_ts(rec.get("ts"))
+                    if t is not None:
+                        ts_min = t if ts_min is None else min(ts_min, t)
+                        ts_max = t if ts_max is None else max(ts_max, t)
+
+                    if event == "start":
+                        start_records[channel] = start_records.get(channel, 0) + 1
+                        continue
+
+                    # Attribute each anomalous record to exactly one SEE type.
+                    if status == "error":
+                        counts["fatal_error"] += 1
+                    elif channel == "compute" and event == "checksum":
+                        if rec.get("mismatch") is True:
+                            counts["cuda_golden_mismatch"] += 1
+                        elif rec.get("finite") is False:
+                            counts["cuda_nonfinite"] += 1
+                        elif rec.get("anomaly") is True:
+                            counts["cuda_anomaly"] += 1
+                    elif channel == "memory" and event == "mem_upset":
+                        counts["gpu_mem_upset"] += 1        # one record per flipped byte
+        except OSError:
+            continue
+
+    # A service that crashes mid-run is restarted by systemd (Restart=always), which
+    # writes another "start" record with the same run_id. START itself accounts for
+    # the first start, so any extra starts are unexpected shutdowns.
+    counts["cuda_shutdown"] = max(0, start_records.get("compute", 0) - 1)
+    counts["mem_tester_restart"] = max(0, start_records.get("memory", 0) - 1)
+
+    duration_s = (round(ts_max - ts_min, 3)
+                  if ts_min is not None and ts_max is not None else 0.0)
+    total = sum(counts.values())
+    rate = round(total / duration_s, 4) if duration_s > 0 else 0.0
+
+    return {
+        "run_id": run_id,
+        "beam_energy": beam_energy or "unset",
+        "shield_config": shield_config or "unset",
+        "duration_s": duration_s,
+        "records_scanned": matched,
+        "total_sees": total,
+        "sees_per_s": rate,
+        "by_type": counts,
+    }
+
+
 # --- request handling -------------------------------------------------------
 
 def handle_message(raw, cfg, state, lock):
@@ -292,12 +409,24 @@ def handle_message(raw, cfg, state, lock):
         # target_request_id: the coordinator's STOP_TEST names which START to stop
         # (its own request_id is a fresh uuid). We stop all channels regardless, but
         # log it so a stop can be correlated back to its start.
+        # Summarise the run just stopped -> the coordinator shows a popup + writes a
+        # CSV from this. run_id is the START this STOP targets (fall back to the last
+        # START we handled, in case the sender omitted target_request_id).
+        run_id = msg.get("target_request_id") or state.get("last_start_run_id")
+        if run_id:
+            try:
+                reply["summary"] = summarize_run(cfg, run_id)
+            except Exception as exc:            # noqa: BLE001 - reporting never fails STOP
+                reply["summary"] = {"run_id": run_id, "error": "summary failed: %s" % exc}
         log_control(cfg, {"event": "stop_test", "request_id": msg["request_id"],
                           "target_request_id": msg.get("target_request_id"),
+                          "summary": reply.get("summary"),
                           "channels": results, "ok": all_ok})
 
     with lock:
         state["last_channels"] = reply.get("channels", [])
+        if cmd == "START_TEST":
+            state["last_start_run_id"] = msg["request_id"]
     return reply
 
 

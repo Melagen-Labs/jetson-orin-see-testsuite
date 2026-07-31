@@ -15,6 +15,25 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### control: STOP reply returns a per-run SEE summary (popup + CSV data)
+
+- **`<pending>` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md**
+  - On STOP_TEST the receiver now scans each channel's JSONL log for the finishing
+    run and returns a `summary` block in the ack: `duration_s`, `total_sees`,
+    `sees_per_s`, and a per-type breakdown. Added a `log` path per channel in the
+    config so the receiver knows where each channel's `.jsonl` is.
+  - SEE taxonomy (each SEE attributed to exactly one type, so `by_type` partitions
+    `total_sees`): `cuda_golden_mismatch` (compute `mismatch:true`), `cuda_nonfinite`
+    (`finite:false`), `cuda_anomaly` (`anomaly:true`), `gpu_mem_upset` (one per
+    `mem_upset` record), `cuda_shutdown`/`mem_tester_restart` (extra `start` records
+    = systemd restarted a crashed service mid-run), `fatal_error` (`status:error`).
+    Duration = first→last log timestamp for the run_id. Best-effort: a log failure
+    yields `summary.error` and never fails STOP.
+  - Verified with a deterministic synthetic-log test (counts, run filtering,
+    restart-as-shutdown, duration, rate all correct). Consumed by the coordinator
+    GUI (teammate repo) for a post-test popup + auto-incrementing `test_N.csv`.
+    Requires redeploying test_control on the board.
+
 ### control: reply status must be ACCEPTED/REJECTED for the coordinator GUI
 
 - **`030ba5b` — test_control.py, CONTROL_INTERFACE.md**
