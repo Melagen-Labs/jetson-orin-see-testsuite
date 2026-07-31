@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: reply status must be ACCEPTED/REJECTED for the coordinator GUI
 
-- **`<pending>` — test_control.py, CONTROL_INTERFACE.md**
+- **`030ba5b` — test_control.py, CONTROL_INTERFACE.md**
   - **Bug found by running the real coordinator GUI against the board:** START
     came back "Receiver rejected the command". Root cause — `coordinator/ui.py::
     _validate_response` accepts a reply **only if `status == "ACCEPTED"`** and
