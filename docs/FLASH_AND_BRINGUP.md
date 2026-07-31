@@ -271,7 +271,7 @@ We reach the boards over Tailscale, so every clone must join the tailnet as its
 logged in, and its Tailscale state lives in the disk image
 (`/var/lib/tailscale/tailscaled.state`). So a fresh clone boots up *claiming to be
 `orin-nano-01`'s Tailscale node.* If you skip the reset below, two boards fight
-over one identity and neither is reliably reachable. Reset first, then enrol:
+over one identity and neither is reliably reachable. Reset first, then enroll:
 
 ```bash
 # 1. Drop the master's inherited Tailscale identity (definitive: clear the state)
@@ -322,7 +322,7 @@ still look up each board's assigned IP (step 2) afterward.
 | **Tailscale node + IP** | **manual (reset + `tailscale up`)** | **yes — see the ⚠️ step above** |
 
 So there are **two** per-board actions: the one `setup-board.sh NN` command (only
-the number varies, everything else is automatic), **and** the Tailscale enrolment
+the number varies, everything else is automatic), **and** the Tailscale enrollment
 above (reset the inherited identity, approve the board's unique login URL, record
 its assigned IP). Everything else — software, hardening, `radpull` key, services,
 config — is identical across the fleet by design and comes straight from the
@@ -439,10 +439,19 @@ nvidia` shows an `NVIDIA Corp.` device.
 
 ### First boot + full setup
 
-Complete oem-config, get on the network (`nmcli device wifi connect …`; optional
-`sudo tailscale up`), then run the entire **§1** master-prep sequence on it
-(software, accounts/logs, hardening) and **§4** to validate. That produces a
-board identical to how board 1 was built.
+Complete oem-config and get on the network (`nmcli device wifi connect …`).
+
+**Install Tailscale — a from-scratch board doesn't have it.** Unlike a clone
+(which inherits Tailscale from the master image), a freshly flashed board has no
+`tailscale` binary at all. Install it, then enroll as in the §3 Tailscale step:
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up        # approve this board's unique login URL, then note its IP
+```
+
+Then run the entire **§1** master-prep sequence on it (software, accounts/logs,
+hardening) and **§4** to validate. That produces a board identical to how board 1
+was built.
 
 ---
 

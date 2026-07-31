@@ -15,7 +15,18 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
-### docs: manual §3 — full Tailscale per-board enrolment procedure
+### docs: Appendix A installs Tailscale on a from-scratch board; spelling
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - Appendix A (flash from scratch) assumed `tailscale` already existed — true
+    only for clones, which inherit it from the master image; a freshly flashed
+    board has no `tailscale` binary. Added the install step
+    (`curl -fsSL https://tailscale.com/install.sh | sh`) + `tailscale up` to the
+    "First boot + full setup" section so the rebuild-master path is complete.
+  - Standardized spelling to US "enroll/enrollment" (was mixed with the British
+    single-l "enrol/enrolment").
+
+### docs: manual §3 — full Tailscale per-board enrollment procedure
 
 - **`80783cd` — docs/FLASH_AND_BRINGUP.md**
   - §3 previously only *mentioned* Tailscale ("each board needs its own
@@ -32,7 +43,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
     not committed).
   - Updated the "what differs per board" table + prose: there are **two**
     per-board actions — `setup-board.sh NN` (number only) **and** Tailscale
-    enrolment — not one.
+    enrollment — not one.
 
 ### setup: fold SSH-host-key + machine-id regen into setup-board.sh; manual to match
 
