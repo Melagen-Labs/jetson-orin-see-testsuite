@@ -347,6 +347,7 @@ def summarize_run(cfg, run_id):
 
     return {
         "run_id": run_id,
+        "jetson_id": hostname(),
         "beam_energy": beam_energy or "unset",
         "shield_config": shield_config or "unset",
         "duration_s": duration_s,

@@ -15,6 +15,17 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### control: include jetson_id (hostname) in the post-test summary/CSV
+
+- **`<pending>` — test_control.py**
+  - `summarize_run()` now adds `jetson_id` (the board hostname) to the summary
+    block returned on STOP, so the coordinator's per-test CSV records which board
+    produced the run. Additive/backward-compatible; the top-level reply already
+    carried `jetson_id`, this puts it in the summary the CSV writer consumes.
+  - Paired coordinator change (teammate repo `melagen-test-coordinator`,
+    `coordinator/ui.py`): `_save_result_csv` writes a `jetson_id` row at the top
+    of `results/test_N.csv`.
+
 ### docs: correct bring-up manual §1 with board 1's verified state
 
 - **`c3afebc` — docs/FLASH_AND_BRINGUP.md**
