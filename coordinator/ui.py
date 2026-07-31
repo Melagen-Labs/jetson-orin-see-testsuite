@@ -71,6 +71,17 @@ class TestCoordinatorApp(ttk.Frame):
             "unknown",
         )
 
+        # For a real network transport, surface WHERE it points so the operator
+        # can confirm the GUI is aimed at the intended DUT (not mock, not the
+        # wrong board). MockTransport has no host/port, so this stays blank.
+        target_host = getattr(self.transport, "host", None)
+        target_port = getattr(self.transport, "port", None)
+        self.transport_target = (
+            f" -> {target_host}:{target_port}"
+            if target_host and target_port
+            else ""
+        )
+
         project_root = (
             Path(__file__)
             .resolve()
@@ -99,6 +110,7 @@ class TestCoordinatorApp(ttk.Frame):
             value=(
                 f"Ready - "
                 f"{self.transport_mode} mode"
+                f"{self.transport_target}"
             )
         )
 
@@ -114,7 +126,8 @@ class TestCoordinatorApp(ttk.Frame):
 
         self._append_log(
             "Application started in "
-            f"{self.transport_mode.upper()} mode."
+            f"{self.transport_mode.upper()} mode"
+            f"{self.transport_target}."
         )
         self._append_log("STATE -> IDLE")
 
