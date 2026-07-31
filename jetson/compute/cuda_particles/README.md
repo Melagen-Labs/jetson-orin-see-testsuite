@@ -11,7 +11,7 @@ from the `NVIDIA/cuda-samples` particles sample per the repository review
 - [x] Headless `particles_main.cpp` — continuous, epoch-based, per-iteration checksummed loop
 - [x] Project-owned modules: `config.*` (JSON), `checksum.*` (FNV-1a), `logger.*` (JSONL), heartbeat, SIGTERM handling
 - [x] Trimmed `CMakeLists.txt` (headless, `CMAKE_CUDA_ARCHITECTURES=87`, GL off) + `cuda_particles.service`
-- [x] **On-target:** built on the Orin Nano, `--generate-golden` produced `data/golden_hashes.txt` (committed); validated by a ~67 min / 6,064-epoch soak with 0 anomalies
+- [x] **On-target:** built on the Orin Nano, `--generate-golden` produced `data/golden_hashes.txt` (per-board, git-ignored); validated by a ~67 min / 6,064-epoch soak with 0 anomalies
 - [x] **Decision:** checksum/tolerance policy = bit-exact default (0 false positives over the 6M-iteration soak) — see EXTRACTION_MAP §6
 - [ ] Update `docs/BUILD_PLAN.md` §1a: demote gpu-burn to secondary, make cuda_particles the primary GPU compute channel
 
@@ -28,7 +28,7 @@ cuda_particles/
   src/                      # vendored physics (GL guarded out): particleSystem.{cpp,h,cuh},
                             #   particleSystem_cuda.cu, particles_kernel{,_impl}.cuh
   third_party/nvidia_common/# BSD-3 NVIDIA helper headers + LICENSE
-  data/golden_hashes.txt    # golden table — generated on-target, committed (20 hashes)
+  data/golden_hashes.txt    # golden table — generated on each board (git-ignored, 20 hashes)
   logs/                     # runtime JSONL + heartbeat (created on the DUT)
 ```
 
@@ -44,7 +44,7 @@ upset, the sequence of per-step checksums is therefore identical epoch-to-epoch,
 ./cuda_particles --config config/particles.json --generate-golden
 ```
 
-Then commit `data/golden_hashes.txt` and run normally — each checksum step is compared
+Each board generates its own `data/golden_hashes.txt` (git-ignored) and runs normally — each checksum step is compared
 against the golden hash for that step index; a mismatch is logged as an anomaly, and
 NaN/Inf or out-of-bounds positions are logged as secondary signals.
 
@@ -91,7 +91,7 @@ the golden table holds one hash per
 checksum step = `epoch_iterations ÷ checksum_interval`, so **any change to
 `epoch_iterations` (or `checksum_interval`) requires regenerating the golden table** on
 the Jetson (`./build/cuda_particles --config config/particles.json --generate-golden`)
-and re-committing `data/golden_hashes.txt`.
+and re-generating `data/golden_hashes.txt` on each board.
 
 ## What we changed vs. upstream
 - All OpenGL/GLUT/cuda_gl_interop code is behind `#ifdef PARTICLES_USE_GL`; the CUDA-only

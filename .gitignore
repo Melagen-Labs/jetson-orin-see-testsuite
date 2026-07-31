@@ -26,6 +26,9 @@ build/
 # --- Per-DUT runtime flags (machine-specific, created on the board) ---
 ARMED
 
+# --- Per-DUT golden table (device+build specific, generated on each board) ---
+golden_hashes.txt
+
 # --- OS / editor cruft ---
 .DS_Store
 Thumbs.db

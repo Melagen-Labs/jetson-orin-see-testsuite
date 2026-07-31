@@ -15,6 +15,21 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-30
 
+### fleet: one-shot `setup-board.sh` + per-board (git-ignored) golden
+
+- **`PENDING12` — scripts/setup-board.sh + untrack golden_hashes.txt**
+  - `scripts/setup-board.sh` (**new**, fully commented): one interactive command
+    per board does the whole bring-up — set hostname (`orin-nano-0N`, feeds
+    `jetson_id:"auto"`), clone/pull, build `cuda_particles`, generate this board's
+    golden, arm both channels, install+enable+start services.
+  - `.gitignore`: ignore `golden_hashes.txt`; `git rm --cached` the previously
+    tracked copy. The golden table is device+build specific, so it is **generated
+    per board**, not shared — matches the README's own warning and avoids
+    `git pull` conflicts from a locally regenerated table.
+  - Docs updated: `docs/DEPLOYMENT.md` (points to the script), cuda_particles
+    `README.md` and `docs/BUILD_PLAN.md` §1a (golden is per-board / git-ignored,
+    no longer "committed").
+
 ### services: repoint both units to the git clone (`~/see-testsuite`)
 
 - **`7f8c335` — cuda_particles/mem_check .service → clone paths**

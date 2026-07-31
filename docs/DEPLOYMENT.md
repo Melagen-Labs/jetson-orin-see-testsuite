@@ -13,6 +13,17 @@ not scale and drifts. Git for dev, one hashed image for the run.
 
 ## One-time: turn a DUT into a clone
 
+**The easy way** — `scripts/setup-board.sh` does the whole bring-up (hostname,
+clone, build, per-board golden, arm, install+start services) in one interactive
+run on the board:
+```bash
+ssh melagen@<board>
+git clone https://github.com/Reece122/jetson-orin-see-testsuite.git ~/see-testsuite
+~/see-testsuite/scripts/setup-board.sh 03    # this board becomes orin-nano-03
+```
+The manual steps below are exactly what that script automates, if you prefer to
+run them by hand.
+
 ```bash
 ssh melagen@orin-nano-0N
 git clone https://github.com/Reece122/jetson-orin-see-testsuite.git ~/see-testsuite

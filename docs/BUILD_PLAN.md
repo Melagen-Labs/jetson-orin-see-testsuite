@@ -51,7 +51,7 @@ Steps:
    (CMake pins `CMAKE_CUDA_ARCHITECTURES=87`; OpenGL is compiled out — `PARTICLES_USE_GL` is never defined.)
 3. **Generate the golden reference on the target, once, with no beam:**
    `./cuda_particles --config config/particles.json --generate-golden`
-   Commit the resulting `data/golden_hashes.txt`. It is build- and device-specific — do **not** reuse a golden from another machine or build. **✅ Done:** 20-hash table generated on the Orin Nano and committed; validated by the soak (0 anomalies).
+   Each board generates its own `data/golden_hashes.txt` — it is build- and device-specific, so it is **git-ignored**, not shared across boards (`scripts/setup-board.sh` does this per board). **✅ Done:** 20-hash table generated + soak-validated on the reference Orin Nano (0 anomalies).
 4. Run: the workload loops in deterministic **epochs** (reset → known state via `srand(1973)`), checksums the position+velocity buffers every K steps (FNV-1a 64), compares against the golden table, and writes:
    - structured **JSONL in the frozen schema v1** (§5a): every record carries `schema_version:1`, ms-precision `ts`, `run_id`, `jetson_id`, `channel:"compute"`, `event`, `status` (`ok`/`anomaly`/`info`), then the compute payload + beam/run metadata. Written to the DUT-local `compute/` log dir first so records survive an Ethernet outage and are pulled later.
    - a **one-event-per-epoch SEE counter**: an epoch with ≥1 anomaly is collapsed to exactly one `see_event` record at the epoch boundary (raw mismatch counts over-represent an early hit, since the corrupted state cascades through the rest of that epoch). Running total surfaced as `see_events` in the heartbeat file and the `stop` record.
