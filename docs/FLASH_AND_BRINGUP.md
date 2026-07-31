@@ -214,27 +214,68 @@ without full reliability. **Use Method 1 unless you have a specific reason.**
 
 ---
 
-## 3. Finalize each cloned board
+## 3. Finalize each cloned board — one command per board
 
-A fresh clone is a byte-for-byte copy of the master, so it comes up **as
-`orin-nano-01` with board 1's golden table and SSH keys.** Fix the per-board
-identity on each clone before use:
+A fresh clone is a byte-for-byte copy of the master, so **every clone boots up
+believing it's `orin-nano-01`**, carrying board 1's golden table, SSH host keys,
+and machine-id. Each board needs its own identity before use.
 
+### The one command that names + finalizes it
+
+SSH into the clone and run it with **that board's two-digit number** — you supply
+the number, the script does the rest:
 ```bash
 ssh melagen@<new-board>
-~/see-testsuite/scripts/setup-board.sh 0N     # N = 02..07: sets hostname, regenerates THIS board's golden, re-arms
+~/see-testsuite/scripts/setup-board.sh 03     # 02..07 — names it orin-nano-03, regenerates ITS golden, re-arms
 ```
-`setup-board.sh` re-does exactly the two things that must differ per board:
+That handles the two **test-relevant** things that must differ per board:
 
-1. **Hostname → `jetson_id`.** Each board must be `orin-nano-0N` so every log line
-   is stamped with the right board (`jetson_id:"auto"` resolves to the hostname).
+1. **Hostname → `jetson_id`.** So every log line is stamped with the right board
+   (`jetson_id:"auto"` resolves to the hostname).
 2. **Golden table.** `golden_hashes.txt` is device+build specific — each board
-   must generate and verify its **own** with no beam present. A board whose golden
+   generates and verifies its **own**, no beam present. A board whose golden
    doesn't match its peers on identical hardware/build is itself suspect.
 
-Then log out/in for the new hostname to take effect. The `radpull` `authorized_keys`
-carried over from the master, so the arbiter key already works; if a *different*
-machine will pull from this board, append its pubkey too (keys are per-machine).
+Log out/in afterward for the new hostname to take effect. `setup-board.sh` prompts
+for the sudo password (it sets the hostname and services), so the **operator** runs
+it on the board.
+
+### Clone hygiene the script does NOT do (run once per clone)
+
+A raw clone also shares the master's **SSH host keys** and **machine-id**. This
+does *not* corrupt the science logs — those key off the hostname plus a per-boot
+random `boot_id`, not machine-id — but every board answering SSH with identical
+host keys is untidy and trips "host key changed" warnings when you connect to
+different boards on the same direct-link IP. Regenerate both, once, per clone:
+```bash
+sudo rm -f /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh    # unique SSH host keys
+sudo rm -f /etc/machine-id /var/lib/dbus/machine-id && sudo systemd-machine-id-setup  # unique machine-id
+```
+(These could later be folded into `setup-board.sh` so the whole finalize really is
+one command.)
+
+### Keys and network reachability
+
+- The `radpull` `authorized_keys` carried over from the master, so the arbiter's
+  pull key already works; if a *different* machine will pull from this board,
+  append its pubkey too (keys are per-machine).
+- To reach a headless clone you need it on the network: if you use **Tailscale**,
+  each board needs its own `sudo tailscale up` (separate device enrollment); the
+  **direct Ethernet** link uses the same static `192.168.1.20` on every board, so
+  bring clones up **one at a time** on that cable.
+
+### So what actually differs per board?
+
+| Per-board item | Handled by | Unique because |
+|---|---|---|
+| Hostname / `jetson_id` | `setup-board.sh NN` | you pass the number |
+| Golden table | `setup-board.sh NN` | regenerated on-device |
+| SSH host keys | manual hygiene block above | regenerated per clone |
+| machine-id | manual hygiene block above | regenerated per clone |
+| Tailscale identity (if used) | `sudo tailscale up` per board | separate enrollment |
+
+Everything else — software, hardening, `radpull` key, services, config — is
+identical across the fleet by design and comes straight from the master image.
 
 ---
 

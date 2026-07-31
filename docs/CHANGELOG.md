@@ -15,6 +15,18 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: manual §3 — one command per clone + full per-board difference list
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - Rewrote §3 to make the per-board finalize explicit: **one** `setup-board.sh NN`
+    per clone (operator supplies the number → hostname + own golden + re-arm), and
+    added the **clone-hygiene** steps the script does *not* do — regenerating each
+    clone's **SSH host keys** and **machine-id** (a raw clone shares the master's;
+    harmless to the logs, which key off hostname + per-boot `boot_id`, but untidy
+    for SSH). Added a table of everything that differs per board (hostname, golden,
+    SSH host keys, machine-id, Tailscale enrollment) vs. what's identical from the
+    master image, and a note on reaching headless clones over the network.
+
 ### control: include jetson_id (hostname) in the post-test summary/CSV
 
 - **`eb11bc4` — test_control.py**
