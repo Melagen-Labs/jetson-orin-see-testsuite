@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: mark arbiter/ as not-owned; confirm control transport = TCP
 
-- **`<pending>` — arbiter/README.md (new) + CONTROL_INTERFACE.md**
+- **`de17365` — arbiter/README.md (new) + CONTROL_INTERFACE.md**
   - `arbiter/README.md` (**new**): prominent notice that the entire `arbiter/`
     directory is a teammate's (Ansh's) responsibility in a separate repo —
     reference/scaffolding only, **not used, built, or deployed** by this project.
