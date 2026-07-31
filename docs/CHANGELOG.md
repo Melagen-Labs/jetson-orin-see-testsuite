@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: DUT-side arbiter test-control receiver (start/stop over Ethernet)
 
-- **`<pending>` — jetson/control/ (new) + setup-board.sh + docs**
+- **`8c6c1b7` — jetson/control/ (new) + setup-board.sh + docs**
   - New `jetson/control/test_control.py`: a TCP receiver for the arbiter's
     start/stop-test button. The arbiter (sender) is a teammate's separate repo;
     this is only our side, built to the agreed JSON contract (`protocol_version`,
