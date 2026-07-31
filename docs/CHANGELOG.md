@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### cuda_particles: final-checkpoint detection, SEE state dump, crash flag + restart
 
-- **`<pending>` — final-hash detection + SEE dump-to-SSD + crash handling**
+- **`fa8592c` — final-hash detection + SEE dump-to-SSD + crash handling**
   - `jetson/compute/cuda_particles/particles_main.cpp`:
     - **Detection now uses only the FINAL checkpoint** of each epoch vs the
       golden's last hash (any earlier upset cascades to the end, so the final
