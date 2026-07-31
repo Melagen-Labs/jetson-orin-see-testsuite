@@ -334,8 +334,14 @@ master image.
 
 Full procedure with copy-paste commands (and the Windows-arbiter quirks) is in
 [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md). Run this on the **master (§1d)** and
-on **every clone (§3)**. **Any laptop can stand in as the arbiter** with the Python
-snippets in that doc — swap in the real arbiter later.
+on **every clone (§3)**.
+
+**Validate the way you'll actually run the campaign: from the real coordinator
+GUI.** The four interface checks below are low-level diagnostics for isolating a
+fault; the *acceptance* test is the GUI dry run (Start → run → Stop → read the
+result), because that exercises the whole operator path end to end. The bare-laptop
+Python snippets in [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) are a **fallback**
+for isolating the DUT when the GUI isn't handy — not the sign-off test.
 
 ### Topology
 
@@ -361,15 +367,77 @@ master, so clones inherit it; no need to redo per board.)
 | **3** | Heartbeat (UDP 5555) | Run `heartbeat_sender.py --arbiter-ip 192.168.1.10`; listen on arbiter | One `{boot_id,seq,ts}` per second, `seq` climbing; unplug→stops, replug→resumes |
 | **4** | Log pull (SSH) | From arbiter: `rsync -az -e ssh radpull@192.168.1.20:/var/log/radtest/ ./pulled_logs/` | Fresh `.jsonl` files transfer under `radpull`'s key |
 
-### Full dry run (end to end)
+### Full dry run (end to end) — from the coordinator GUI
 
-1. Heartbeat running → arbiter sees the DUT alive.
-2. Arbiter sends **START_TEST** → both channels log with beam metadata.
-3. Run ~1 min, arbiter **pulls logs** → confirm fresh records.
-4. Arbiter sends **STOP_TEST** → channels stop and return a per-run **SEE summary**
-   (counts by type) in the ack; heartbeat still alive.
+This is the acceptance test. Drive it from the operator laptop exactly as on beam
+day.
 
-All four checks + the dry run passing = the board is validated.
+**Launch the GUI pointed at this board.** From the coordinator repo
+(`melagen-test-coordinator`), the GUI's TCP transport must target the DUT, not
+loopback — `app_local_tcp.py` ships hardcoded to `127.0.0.1:6000`, so set the
+transport `host` to the board's address before launching:
+- **Direct Ethernet:** `192.168.1.20`
+- **Tailscale:** the board's `100.x.y.z` (from §3) or its MagicDNS name `orin-nano-NN`
+
+```bash
+# in melagen-test-coordinator/ — edit the TcpTransport host to the DUT IP, then:
+python app_local_tcp.py
+```
+(`app.py` launches in **mock mode** and does *not* send over TCP — don't use it for
+this. Jetson-over-Ethernet/Tailscale isn't yet wired as a first-class option in that
+repo, so setting the host in the launcher is the current way; see its README.)
+
+On the DUT side nothing extra is needed: `test_control.service` is already
+listening on TCP 6000 and is what actually starts/stops the workloads and returns
+the SEE summary.
+
+**Then, in the GUI:**
+1. Confirm the DUT is alive first — heartbeat running, arbiter sees it.
+2. Pick **beam energy + shielding**, click **Start** (confirm the prompt) → both
+   channels go `active` and log the beam metadata. Note the `run_id` the GUI shows.
+3. Let it run **~1 min**, then optionally have the arbiter **pull logs** and confirm
+   fresh JSONL records.
+4. Click **Stop** (confirm) → the GUI shows a **"Test Complete"** summary (duration,
+   SEEs detected, SEEs/sec, by type) and writes `results/test_<N>.csv`. Heartbeat
+   should still be alive.
+5. **Open that CSV — this is the end-to-end proof.**
+
+#### Step 5 — verify the result artifact (expected output)
+
+The GUI writes `results/test_<N>.csv` on the coordinator machine. Open it and
+confirm it carries this run's identity and counts — a two-column `field,value` file
+like:
+
+```
+field,value
+jetson_id,orin-nano-01        <- the board's hostname (proves per-board stamping works)
+run_id,smoke-01               <- matches the run_id you sent in START_TEST
+beam_energy,<as sent>
+shield_config,<as sent>
+duration_s,60.0
+total_sees,<N>
+sees_per_s,<N/60>
+
+see_type,label,count          <- by-type block follows (one row per SEE type seen)
+sbu,Single-bit upset,<N>
+...
+```
+
+**Pass criteria for the CSV:**
+- `jetson_id` equals the board you tested (`orin-nano-01`, or `orin-nano-NN` for a
+  clone) — not blank, not the wrong board. This is what tells runs apart in the fleet.
+- `run_id` matches what you started with.
+- `total_sees` and the by-type counts are present (0 is fine with no beam — you're
+  proving the *plumbing*, not detecting real upsets).
+
+**If you used a bare laptop as the stand-in arbiter** (the Python snippets in
+[`INTEGRATION_TEST.md`](INTEGRATION_TEST.md), which don't write a CSV): the same
+fields come back in the **STOP-ack JSON** the snippet prints — confirm `jetson_id`
+and the summary block are there. The coordinator just persists that same ack to the
+CSV above.
+
+All four checks + the dry run (through the step-5 artifact) passing = the board is
+validated.
 
 > **Verify the recovery path too (bench only).** Before trusting a board in the
 > beam, confirm it auto-recovers: `echo c | sudo tee /proc/sysrq-trigger` should

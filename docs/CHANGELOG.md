@@ -15,6 +15,24 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: §4 acceptance test is now GUI-driven with a concrete CSV expected-result
+
+- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+  - Reframed §4 so the **acceptance test mirrors beam day**: drive the run from the
+    real **coordinator GUI** (Start → run → Stop → read result), with the four
+    interface checks demoted to fault-isolation diagnostics and the bare-laptop
+    Python snippets demoted to a fallback (were previously the lead).
+  - Documented launching the GUI against the DUT: `app_local_tcp.py` ships
+    hardcoded to `127.0.0.1:6000`, so the operator sets the TcpTransport `host` to
+    the board (`192.168.1.20` Ethernet / `100.x.y.z` Tailscale); `app.py` is
+    mock-mode and must not be used. Noted the DUT's `test_control.service` is the
+    real listener that starts/stops workloads.
+  - Added an explicit **step 5 — verify the result artifact**: open
+    `results/test_<N>.csv` and check `jetson_id` = the board, `run_id` matches, and
+    the SEE counts are present. Included an example CSV matching the coordinator's
+    actual `_save_result_csv` writer (field/value rows + a `see_type,label,count`
+    by-type block). 0 counts are a pass with no beam (proving plumbing, not upsets).
+
 ### docs: Appendix A installs Tailscale on a from-scratch board; spelling
 
 - **`c42d841` — docs/FLASH_AND_BRINGUP.md**
