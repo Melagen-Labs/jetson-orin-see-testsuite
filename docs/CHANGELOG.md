@@ -15,6 +15,20 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: mark arbiter/ as not-owned; confirm control transport = TCP
+
+- **`<pending>` — arbiter/README.md (new) + CONTROL_INTERFACE.md**
+  - `arbiter/README.md` (**new**): prominent notice that the entire `arbiter/`
+    directory is a teammate's (Ansh's) responsibility in a separate repo —
+    reference/scaffolding only, **not used, built, or deployed** by this project.
+    Adds an ownership table (DUT = this repo; arbiter = separate) and lists the
+    DUT↔arbiter contracts we do own.
+  - `docs/CONTROL_INTERFACE.md`: transport is now **confirmed TCP** (test
+    coordinator = TCP, heartbeat monitor = UDP); only the port (5599) remains to
+    align with the sender. Added a pointer to `arbiter/README.md`.
+  - Reminder: `arbiter/pull_logs.sh` was handed to the teammate as the reference
+    log-pull script.
+
 ### control: DUT-side arbiter test-control receiver (start/stop over Ethernet)
 
 - **`8c6c1b7` — jetson/control/ (new) + setup-board.sh + docs**

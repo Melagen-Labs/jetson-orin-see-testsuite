@@ -12,10 +12,9 @@ arbiter opens a connection, sends one JSON object, reads one JSON reply, closes.
 Pretty-printed or compact JSON both work (the receiver reads until one complete
 object has arrived).
 
-> ⚠️ **Transport + port are a coordination point with the arbiter author.** The
-> contract JSON below was provided; the transport (TCP) and port (5599) were
-> chosen here and must match the sender. If the arbiter uses HTTP POST or UDP
-> instead, only the socket plumbing at the bottom of `test_control.py` changes.
+> **Transport confirmed: TCP** (the test coordinator uses TCP; the heartbeat
+> monitor uses UDP). The **port** (5599) is still ours to align with the arbiter
+> author — confirm the sender connects to the same port.
 
 ### Request (arbiter → DUT)
 
@@ -78,6 +77,9 @@ For each configured channel (compute + GPU memory), in order:
 
 **Idempotency:** a repeated `request_id` is acknowledged `ok` without re-acting,
 so an arbiter retry can't double-start.
+
+> **Note:** the arbiter host code is a teammate's, in a separate repo — this repo
+> owns only the DUT receiver. See [`arbiter/README.md`](../arbiter/README.md).
 
 ## STOP_TEST — our forward-compatible extension
 
