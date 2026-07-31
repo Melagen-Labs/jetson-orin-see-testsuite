@@ -15,6 +15,26 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: crash-recovery runbook — arm watchdog, fast panic reboot, headless
+
+- **`<pending>` — docs/CRASH_RECOVERY.md (new)**
+  - Measured the board's recovery posture (`systemd-analyze`, watchdog/panic
+    state) and found two "hang forever" gaps: **no hardware watchdog is running**
+    (a hard board hang/latchup never auto-reboots) and **`kernel.panic=0`** (a
+    panic hangs instead of rebooting). Boot itself is fine at 15.5 s.
+  - New runbook documents the one-time board settings that close both, plus
+    going headless now that control is confirmed remote-only:
+    1. Arm `/dev/watchdog` via systemd (`RuntimeWatchdogSec=10s` drop-in) — no
+       need to build the vendored `watchdogd`; hard hang → reset in ~10 s.
+    2. `kernel.panic=1` sysctl — panic → reboot in ~1 s, evidence preserved via
+       pstore + `boot_log.jsonl`.
+    3. `set-default multi-user.target` (drop the unused on-board desktop) and
+       `mask apt-daily*` (stop unattended package changes mid-campaign).
+  - No live board changes and no code touched — procedure + exact `sudo` steps
+    for the operator, like `PSTORE_SETUP.md`. Process-crash recovery
+    (`Restart=always`) and post-reboot re-arm (`ARMED` flags) were already in
+    place; this covers the whole-board and panic paths.
+
 ### control: STOP reply returns a per-run SEE summary (popup + CSV data)
 
 - **`0e93b47` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md**
