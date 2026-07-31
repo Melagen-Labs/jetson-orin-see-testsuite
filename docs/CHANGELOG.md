@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### fleet: one-shot `setup-board.sh` + per-board (git-ignored) golden
 
-- **`PENDING12` — scripts/setup-board.sh + untrack golden_hashes.txt**
+- **`40e48fb` — scripts/setup-board.sh + untrack golden_hashes.txt**
   - `scripts/setup-board.sh` (**new**, fully commented): one interactive command
     per board does the whole bring-up — set hostname (`orin-nano-0N`, feeds
     `jetson_id:"auto"`), clone/pull, build `cuda_particles`, generate this board's
