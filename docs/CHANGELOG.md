@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: reframe the bring-up manual around the existing master board
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md**
+- **`92e8759` — docs/FLASH_AND_BRINGUP.md**
   - Restructured so **board 1 already being flashed/working is the starting
     point**, not a from-scratch flash. Main path is now: (§1) bring the existing
     dev board fully to spec as the **master** — clone-model software, `radpull` +
