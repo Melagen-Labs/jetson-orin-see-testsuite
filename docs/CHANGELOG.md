@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: full flash → bring-up → test manual (FLASH_AND_BRINGUP.md)
 
-- **`<pending>` — docs/FLASH_AND_BRINGUP.md (new)**
+- **`d2482b8` — docs/FLASH_AND_BRINGUP.md (new)**
   - Expanded the team's Jetson cloning reference into a full-lifecycle manual:
     bare board → **flash** (SDK Manager, JetPack 6.2.2, NVMe, Force Recovery, host
     prep) → **one-time OS setup** (`radpull` user + arbiter key, `/var/log/radtest`
