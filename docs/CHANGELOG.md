@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: align test-control port to 6000 + accept coordinator STOP_TEST
 
-- **`<pending>` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md, INTEGRATION_TEST.md**
+- **`9053d95` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md, INTEGRATION_TEST.md**
   - Verified our DUT receiver against the real coordinator repo
     (`madhavsharma01312003/melagen-test-coordinator`, not ours — read-only). Its
     `config.example.json` uses **`jetson_port: 6000`**, so the DUT now listens on
