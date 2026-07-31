@@ -1,0 +1,6 @@
+{
+  "transport_mode": "mock",
+  "jetson_host": "100.122.15.91",
+  "jetson_port": 6000,
+  "timeout_seconds": 5
+}
