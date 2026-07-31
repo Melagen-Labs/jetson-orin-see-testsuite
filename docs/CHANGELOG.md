@@ -15,6 +15,23 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### logs: standardize DUT log output to /var/log/radtest/<channel> for arbiter pull
+
+- **`<pending>` — mem_check_gpu.json + particles.json log paths**
+  - Both deployed channels now write to the canonical DUT log location the
+    arbiter's `pull_logs.sh` expects, instead of `./logs` inside the clone:
+    memory → `/var/log/radtest/memory`, compute → `/var/log/radtest/compute`
+    (log_dir + heartbeat_path). This lets the arbiter's rsync log pull reach the
+    logs via a low-priv `radpull` user **without exposing the operator's home
+    dir**, and matches `pull_logs.sh`'s `DUT_LOG_DIR/{memory,compute,boot_state}`
+    layout. The board is a single 467 GB NVMe mounted at `/`, so `/var/log` is on
+    the SSD — the compute channel's large SEE dumps stay on the SSD.
+  - **One-time DUT setup (operator, sudo):** create a shared `radlog` group, add
+    `melagen` (writer) + `radpull` (reader), and create
+    `/var/log/radtest/{memory,compute,boot_state}` owned `melagen:radlog`,
+    mode `2750` (setgid, group-readable). Confirmed compatibility with Madhav's
+    heartbeat monitor (UDP 5555, `{boot_id,seq,ts}`) — no sender code change.
+
 ### docs: mark arbiter/ as not-owned; confirm control transport = TCP
 
 - **`de17365` — arbiter/README.md (new) + CONTROL_INTERFACE.md**

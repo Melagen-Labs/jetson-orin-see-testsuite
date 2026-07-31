@@ -9,9 +9,9 @@
   "max_report": 64,
   "iterations": 0,
 
-  "log_dir": "./logs",
+  "log_dir": "/var/log/radtest/memory",
   "log_name": "mem_check_gpu.jsonl",
-  "heartbeat_path": "./logs/heartbeat_gpu.txt",
+  "heartbeat_path": "/var/log/radtest/memory/heartbeat_gpu.txt",
 
   "run_id": "unset",
   "jetson_id": "auto",

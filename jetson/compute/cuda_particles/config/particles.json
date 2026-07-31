@@ -9,9 +9,9 @@
   "tolerance_mode": "bitexact",
   "save_see_epochs": true,
 
-  "log_dir": "./logs",
+  "log_dir": "/var/log/radtest/compute",
   "golden_path": "./data/golden_hashes.txt",
-  "heartbeat_path": "./logs/heartbeat.txt",
+  "heartbeat_path": "/var/log/radtest/compute/heartbeat.txt",
 
   "run_id": "unset",
   "jetson_id": "auto",
