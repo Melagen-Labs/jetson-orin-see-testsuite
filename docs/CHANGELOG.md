@@ -15,6 +15,19 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-07-31
 
+### docs: mark Phase 4 (log pull) verified from the operator laptop
+
+- **`<pending>` — docs/INTEGRATION_TEST.md**
+  - Phase 4 auth + transfer **verified on 2026-07-31**: the operator's Windows
+    laptop ed25519 pubkey was installed in `radpull`'s `authorized_keys`, and both
+    `ssh radpull@… ls /var/log/radtest` and `scp -r … /var/log/radtest` succeeded
+    (pulled `cuda_particles.jsonl` ~1.09 MB, `mem_check_gpu.jsonl` ~54 KB, and both
+    heartbeats). Windows has no `rsync`, so `scp` stood in for validation; the
+    production incremental pull runs `rsync` from the Linux arbiter.
+  - Results table row 4 → ✅. Open items note the per-board, per-machine nature of
+    `authorized_keys`: when the pull moves to Daniel's machine, its pubkey must be
+    appended on all 7 boards (fold into `setup-board.sh`).
+
 ### control: align test-control port to 6000 + accept coordinator STOP_TEST
 
 - **`9053d95` — test_control.py, config/test_control.json, CONTROL_INTERFACE.md, INTEGRATION_TEST.md**

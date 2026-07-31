@@ -164,7 +164,7 @@ All four passing = DUT↔arbiter wiring validated.
 | 1 link + static IPs (ping both ways) | ✅ 2026-07-31 |
 | 2 START_TEST over Ethernet (metadata in logs, both channels restart) | ✅ 2026-07-31 |
 | 3 heartbeat (1 Hz, boot_id + climbing seq received) | ✅ 2026-07-31 |
-| 4 log pull | pending (needs arbiter pubkey) |
+| 4 log pull (radpull key auth + transfer) | ✅ 2026-07-31 |
 | 5 full dry run | pending |
 
 ## Teardown (return the arbiter laptop to normal)
@@ -187,4 +187,11 @@ Jetson (only if reverting the wired port): `sudo nmcli con down radtest-eth`. Th
   coordinator repo itself does not implement heartbeat — that's Madhav's separate
   `melagen-jetson-heartbeat` monitor.)
 - Phase 4 log-pull is **not** part of the coordinator repo — it's Ansh's
-  `arbiter/pull_logs.sh`. Still needs the **arbiter's SSH public key** in `radpull`.
+  `arbiter/pull_logs.sh`. **Verified 2026-07-31** from the operator's Windows
+  laptop: its ed25519 pubkey installed in `radpull`'s `authorized_keys`; `ssh
+  radpull@… ls` and `scp -r … /var/log/radtest` both succeed (auth + transfer).
+  Windows has no `rsync`, so `scp` stood in for validation; the production
+  incremental pull runs `rsync` from the Linux arbiter.
+- When the pull moves to **Daniel's** machine, append *its* pubkey to `radpull`'s
+  `authorized_keys` on **all boards** (`authorized_keys` is per-board; wire it into
+  `setup-board.sh` for the 7-Nano fleet). Keys are per-machine, not per-person.
