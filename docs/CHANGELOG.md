@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### arbiter: pull_logs.sh runs on a Windows arbiter (scp fallback when rsync absent)
 
-- **`_pending_` — arbiter/pull_logs.sh**
+- **`777bcb3` — arbiter/pull_logs.sh**
   - The canonical log puller was rsync-only, but the campaign arbiter is Windows,
     which has no rsync. It now auto-detects rsync and falls back to `scp` (ships with
     Windows OpenSSH — no install needed). Same env-var interface; identical behavior
