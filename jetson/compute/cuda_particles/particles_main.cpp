@@ -148,15 +148,57 @@ int main(int argc, char **argv)
     std::string configPath = "config/particles.json";
     bool generateGolden = false;
 
+    // --- fault injection (TEST ONLY, default OFF) ----------------------------
+    // Deliberately corrupt one float of GPU particle state at a chosen iteration
+    // so each detector path can be exercised on demand -- without a beam. The
+    // write goes to the DEVICE buffer, so the corruption propagates through the
+    // remaining integration steps exactly like a real upset would.
+    //   bitflip -> flips one bit  => cuda_golden_mismatch
+    //   nan     -> quiet NaN      => cuda_nonfinite
+    //   oob     -> 1e6            => cuda_anomaly (|pos| > 2.0)
+    // Every injected run also writes an `inject` record carrying "injected":true,
+    // and the resulting see_event is tagged the same way, so injected events can
+    // never be mistaken for -- or silently pollute -- real campaign data.
+    std::string injectMode;                 // "" = disabled
+    unsigned long long injectAt = 500;      // iteration to inject at
+    unsigned int injectBit = 22;            // bit to flip (mantissa-ish, visible)
+    size_t injectIndex = 0;                 // which float of the pos buffer
+
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--config") && i + 1 < argc) {
             configPath = argv[++i];
         } else if (!strcmp(argv[i], "--generate-golden")) {
             generateGolden = true;
+        } else if (!strcmp(argv[i], "--inject") && i + 1 < argc) {
+            injectMode = argv[++i];
+        } else if (!strcmp(argv[i], "--inject-at") && i + 1 < argc) {
+            injectAt = strtoull(argv[++i], nullptr, 10);
+        } else if (!strcmp(argv[i], "--inject-bit") && i + 1 < argc) {
+            injectBit = (unsigned int)strtoul(argv[++i], nullptr, 10) & 31u;
+        } else if (!strcmp(argv[i], "--inject-index") && i + 1 < argc) {
+            injectIndex = (size_t)strtoull(argv[++i], nullptr, 10);
         } else if (!strcmp(argv[i], "--help")) {
-            printf("usage: %s [--config <path>] [--generate-golden]\n", argv[0]);
+            printf("usage: %s [--config <path>] [--generate-golden]\n"
+                   "       [--inject bitflip|nan|oob] [--inject-at <iter>]\n"
+                   "       [--inject-bit <0-31>] [--inject-index <float idx>]\n"
+                   "\n"
+                   "  --inject  TEST ONLY. Corrupts one float of GPU particle state at\n"
+                   "            --inject-at to exercise a detector without a beam.\n"
+                   "            Events are tagged \"injected\":true. Never use in a real run.\n",
+                   argv[0]);
             return 0;
         }
+    }
+
+    if (!injectMode.empty() && injectMode != "bitflip" &&
+        injectMode != "nan" && injectMode != "oob") {
+        fprintf(stderr, "[cuda_particles] ERROR: --inject must be bitflip|nan|oob\n");
+        return 1;
+    }
+    if (!injectMode.empty() && generateGolden) {
+        fprintf(stderr, "[cuda_particles] ERROR: refusing to --inject while generating "
+                        "the golden table (it would bake corruption into the baseline)\n");
+        return 1;
     }
 
     Config cfg;
@@ -263,6 +305,7 @@ int main(int argc, char **argv)
     unsigned long long epoch = 0;
     unsigned long long seeEvents = 0; // # epochs with >=1 SEE (one-per-epoch count)
     int corruptionSeen = 0;
+    bool injected = false;             // a TEST-ONLY fault was injected this run
 
     while (!g_stop) {
         // Deterministic reset to the known initial state (srand(1973) inside).
@@ -276,6 +319,44 @@ int main(int argc, char **argv)
             totalIter++;
 
             if (cfg.iterations && totalIter >= cfg.iterations) g_stop = 1;
+
+            // TEST-ONLY fault injection, fires exactly once. Writing to the DEVICE
+            // buffer (not the host copy) means the corruption feeds back into the
+            // next integration step, so it propagates through the remainder of the
+            // epoch the way a real upset does -- and is caught by the same
+            // final-checkpoint comparison, with a real state dump written.
+            if (!injectMode.empty() && totalIter == injectAt) {
+                float *dPos = (float *)psystem.getCudaPosVBO();
+                const size_t idx = injectIndex % count;
+                float v = 0.0f;
+                checkCudaErrors(cudaMemcpy(&v, dPos + idx, sizeof(float),
+                                           cudaMemcpyDeviceToHost));
+                const float before = v;
+                if (injectMode == "oob") {
+                    v = 1.0e6f;                       // far outside |pos| <= 2.0
+                } else {
+                    uint32_t bits;
+                    memcpy(&bits, &v, sizeof(bits));
+                    if (injectMode == "bitflip") bits ^= (1u << injectBit);
+                    else                         bits = 0x7FC00000u;   // quiet NaN
+                    memcpy(&v, &bits, sizeof(v));
+                }
+                checkCudaErrors(cudaMemcpy(dPos + idx, &v, sizeof(float),
+                                           cudaMemcpyHostToDevice));
+                injected = true;
+                fprintf(stderr, "[cuda_particles] INJECTED %s at iter %llu "
+                                "(pos[%zu] %g -> %g)\n", injectMode.c_str(),
+                        (unsigned long long)totalIter, idx, before, v);
+                if (log.isOpen()) {
+                    std::ostringstream os;
+                    os << envelope(cfg, "inject", "compute", "info")
+                       << "\"injected\":true,\"inject_mode\":\"" << injectMode << "\","
+                       << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
+                       << "\"index\":" << idx << ",\"bit\":" << injectBit << ","
+                       << metaFields(cfg) << "}";
+                    log.writeLine(os.str());
+                }
+            }
 
             if (step % K == 0) {
                 // The checkpoint memcpy is our natural GPU sync point, so a
@@ -380,6 +461,7 @@ int main(int argc, char **argv)
                 os << envelope(cfg, "see_event", "compute", "anomaly")
                    << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
                    << "\"see_event\":true,\"see_events\":" << seeEvents << ","
+                   << "\"injected\":" << (injected ? "true" : "false") << ","
                    << "\"hash\":\"" << hbuf << "\",\"golden\":\"" << gbuf << "\","
                    << "\"dump\":\"" << jsonEscape(dumpRel) << "\","
                    << "\"dump_checkpoints\":" << capturedCk << ","

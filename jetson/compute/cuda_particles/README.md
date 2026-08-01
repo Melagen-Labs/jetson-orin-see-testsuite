@@ -86,6 +86,51 @@ at the checkpoint memcpy are logged (`sim_fault`/`crash` + `cudaGetErrorString`)
 and exit 2 so `cuda_particles.service` (`Restart=always`, `StartLimitIntervalSec=0`,
 `RestartSec=1`) relaunches within ~1 s.
 
+## Inducing SEEs without a beam (validation)
+
+`--inject` (TEST ONLY, off by default) corrupts one float of GPU particle state at
+`--inject-at <iter>`, writing to the **device** buffer so it propagates like a real
+upset and is caught by the same detector, with a real dump written. Every injected
+run tags its `inject` and `see_event` records `"injected":true`, so injected events
+can never be mistaken for — or silently pollute — real campaign data.
+
+| Mode | Effect | Detector exercised |
+|---|---|---|
+| `--inject bitflip` | flips `--inject-bit` (default 22) | `cuda_golden_mismatch` |
+| `--inject nan` | writes a quiet NaN | `cuda_nonfinite` (`finite:false`) |
+| `--inject oob` | writes `1e6` (\|pos\|≫2) | out-of-bounds (see note) |
+
+```bash
+# one epoch, isolated log dir, inject at iter 500 (verified on orin-nano-01):
+python3 -c "import json;c=json.load(open('config/particles.json'));c['log_dir']='/tmp/inj';c['iterations']=1000;json.dump(c,open('/tmp/inj.json','w'))"
+./build/cuda_particles --config /tmp/inj.json --inject bitflip --inject-at 500
+cp data/golden_hashes.txt /tmp/inj/ && python3 tools/see_dump_triage.py --logs /tmp/inj
+```
+
+**Random placement:** vary `--inject-index <float 0..count-1>` and `--inject-bit
+<0..31>` (script random values) to hit different particles/bits. `count =
+num_particles × 4`.
+
+> **Subtype note.** The live panel / CSV label an SEE by the **final** checkpoint's
+> fields with `mismatch` checked first, so an `oob` hit that renormalizes before the
+> epoch ends is labeled `cuda_golden_mismatch`, not `cuda_anomaly`. That's consistent
+> between panel and CSV by design; the **authoritative** subtype comes from
+> `see_dump_triage.py`, which scans every checkpoint (it correctly reported the `oob`
+> injection above as `out_of_bounds`, localized to steps [450,500)).
+
+**Other SEE types (no code):**
+- `cuda_shutdown` / `mem_tester_restart`: `sudo systemctl kill -s SIGKILL
+  cuda_particles.service` mid-run — systemd restarts it, the extra `start` record is
+  counted.
+- Force **every** epoch to flag: back up `data/golden_hashes.txt`, corrupt its last
+  line, restart. Exercises the whole detect→dump→pull→panel→CSV→triage chain live.
+  Restore the backup after.
+
+**Whole-SoC random corruption = the beam.** Scribbling random physical memory from
+userspace is blocked (`CONFIG_STRICT_DEVMEM`); the honest system-level chaos test is
+the beam itself — which is what the heartbeat/power/pstore/boot channels exist to
+capture. `--inject` validates the *detectors*; the beam validates the *response*.
+
 ## Tuning the epoch length (SEE pile-up control)
 Because `see_events` counts *epochs with ≥1 SEE* (not raw upsets), two SEEs in the same
 epoch are undercounted by one. The undercount fraction ≈ `(SEE_rate × epoch_seconds) / 2`,

@@ -15,6 +15,34 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### Fault injection: induce every compute SEE type on demand (no beam) — verified on hardware
+
+- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp**
+  - New **TEST-ONLY `--inject {bitflip,nan,oob}`** flag (+ `--inject-at`,
+    `--inject-bit`, `--inject-index`), default off. Fires once at `--inject-at`,
+    corrupting one float of the **device** particle buffer so the fault propagates
+    through the rest of the epoch exactly like a real upset and is caught by the same
+    final-checkpoint detector, with a real state dump written. `bitflip` →
+    `cuda_golden_mismatch`, `nan` → `cuda_nonfinite`, `oob` (1e6) → out-of-bounds.
+  - **Poison-pill safety:** every injected run writes an `inject` record and tags the
+    resulting `see_event` `"injected":true`, so injected events can never be confused
+    with — or silently pollute — real campaign data. Refuses to run with
+    `--generate-golden` (would bake corruption into the baseline).
+  - **Verified end-to-end on `orin-nano-01`:** built clean; all three modes produced
+    `inject` + `see_event`(`injected:true`) + a `see_dumps/*.bin`, exit 2. Subtypes
+    correct (`bitflip`→mismatch, `nan`→`finite:false`). `see_dump_triage.py` on a real
+    injected dump **localized the `oob` hit to steps [450,500)** — the exact 50-step
+    window of the iter-500 injection — and classified it `out_of_bounds`.
+- **`_pending_` — jetson/compute/cuda_particles/README.md**
+  - New "Inducing SEEs without a beam" section: the `--inject` table + verified
+    commands, random-placement via `--inject-index`/`--inject-bit`, the
+    `systemctl kill` path for shutdown/restart types, golden-corruption to flag every
+    epoch, and the **subtype note** (panel/CSV label by the final checkpoint with
+    `mismatch` first, so a renormalizing `oob` reads as `golden_mismatch`;
+    `see_dump_triage.py` is the authoritative subtype). States plainly that whole-SoC
+    random corruption is blocked from userspace (`CONFIG_STRICT_DEVMEM`) and *is* the
+    beam — `--inject` validates detectors, the beam validates system response.
+
 ### Full post-processing data after EVERY test; live panel stops replaying history
 
 - Paired coordinator change (teammate repo, `ac95dca`):
