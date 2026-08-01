@@ -15,6 +15,42 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### Full post-processing data after EVERY test; live panel stops replaying history
+
+- Paired coordinator change (teammate repo, `ac95dca`):
+  - `coordinator/ui.py` + `app_local_tcp.py`: new **`--pull-script`** (opt-in). Once
+    a STOP is accepted — manual *or* the §6a duration auto-stop — and the CSV is
+    written, the GUI runs `pull_logs.sh` with **`PULL_MODE=full`** in a daemon
+    thread, fetching the ~10 MB per-SEE state dumps, pstore and golden table that
+    the in-run `live` pulls skip. This closes the gap where dumps only arrived at
+    *arbiter* shutdown: now every test ends with its CSV **and** its complete
+    offline-analysis payload. Off the Tk thread so a multi-minute rsync can't freeze
+    the GUI; missing `bash`, non-zero rc and timeouts are reported into the activity
+    log, never raised. Requires the GUI to run on the arbiter box (bash+rsync+key);
+    omit the flag and nothing is attempted.
+  - `coordinator/see_monitor.py`: **`SeeLogTailer` now primes to end-of-file on its
+    first poll.** Previously the panel replayed *every* historical SEE in the mirror
+    on GUI start — prior runs, or hand-seeded demo lines — as though they had just
+    occurred, which would make old events look like live ones during a beam run.
+    Now only events appended after the monitor starts are shown; `from_start=True`
+    restores replay for tests/forensics.
+  - Tests +1 (**63 pass**). Verified headless: history suppressed, a newly appended
+    event still shown, and the pull invoked with `PULL_MODE=full` plus the correct
+    `DUT_HOST`/`LOCAL_LOG_DIR`.
+- **`_pending_` — docs/FLASH_AND_BRINGUP.md**
+  - Tailscale enrollment step now also sets the **node name**
+    (`sudo tailscale set --operator=melagen --hostname=orin-nano-0N`) — a clone
+    otherwise reports the image's old hostname, so all 7 boards appear as `ubuntu`
+    with colliding MagicDNS names. Notes that `tailscale status` shows the old name
+    briefly (propagation lag) and to confirm via `--json` `Self.DNSName`.
+  - Documented the **known-benign connmark health warning** seen on every board:
+    the L4T kernel ships no `xt_connmark` module, so Tailscale can't install its
+    packet-mark rules. Those matter only for subnet routers / exit nodes, which this
+    campaign doesn't use — plain node-to-node SSH/rsync is unaffected (verified on
+    the master). Explicitly warns *against* "fixing" it by switching to
+    `iptables-nft` before an image freeze, and notes the message is inherited by all
+    clones rather than being a per-board fault.
+
 ### Pull modes: light JSONL-only pulls during a run, heavy dumps at the end
 
 Requested by the team: *"only send whether or not an SEE was detected (less data),

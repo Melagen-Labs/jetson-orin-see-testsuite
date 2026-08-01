@@ -311,6 +311,41 @@ sudo tailscale up --authkey tskey-auth-XXXXXXXX   # same key works on all 6 clon
 The auth key is a **secret — do not commit it** to the repo. Even with the key you
 still look up each board's assigned IP (step 2) afterward.
 
+**Set the node name while you're here.** A cloned board reports the image's old
+hostname to Tailscale (every clone shows up as `ubuntu`, and the MagicDNS names
+collide). Fix it in the same step — the `--operator` half also means you never need
+`sudo` for `tailscale` on that board again:
+
+```bash
+sudo tailscale set --operator=melagen --hostname=orin-nano-0N
+```
+
+`tailscale status` may still print the *old* name for a few seconds afterward —
+that's propagation lag, not failure. Confirm with
+`tailscale status --json` (check `Self.DNSName`), not the immediate status line.
+
+> ### ⚠️ Known-benign health warning (expected on all 7 boards)
+>
+> After `tailscale up`, `tailscale status` prints a persistent health warning:
+>
+> ```
+> enabling connmark rules: ... iptables v1.8.7 (legacy): unknown option "--restore-mark"
+> ```
+>
+> **This is expected and harmless for this campaign — do not try to fix it.** The
+> Jetson's L4T kernel does not ship the `xt_connmark` netfilter module at all
+> (`modinfo xt_connmark` → *not found*), so Tailscale cannot install its packet-mark
+> rules. Those rules only matter for **subnet routers and exit nodes**, and we use
+> neither: the arbiter and coordinator connect straight to each board's tailnet IP.
+> Plain node-to-node traffic (SSH, `git pull`, `rsync` log pulls) works normally —
+> verified on the master.
+>
+> Switching to `iptables-nft` looks like the fix but routes through different kernel
+> modules this kernel may equally lack; changing the network stack of a board you are
+> about to clone six times is real risk for zero benefit. **Leave it.** Expect the
+> same message on every clone — it is inherited from the master image, not a fault of
+> any individual board.
+
 ### So what actually differs per board?
 
 | Per-board item | Handled by | Manual input per board? |
