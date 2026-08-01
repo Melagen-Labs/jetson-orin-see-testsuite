@@ -58,8 +58,14 @@ SSH_OPTS="-i ${SSH_KEY} -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChe
 
 mkdir -p "${LOCAL_LOG_DIR}"
 
-# Structured per-channel log directories. -z compresses over the (possibly slow)
-# beam-line ethernet; --append-verify is safe for append-only growing log files.
+# Transfer backend: rsync if present (incremental --append-verify, the canonical
+# choice on a Linux arbiter); otherwise scp, which ships with Windows OpenSSH so a
+# Windows arbiter needs no extra install. scp re-copies whole files -- negligible
+# for the small JSONL event logs; the large see_dumps only move once, in the full
+# pull. Set FORCE_SCP=1 to use scp even where rsync exists.
+HAVE_RSYNC="$(command -v rsync 2>/dev/null || true)"
+if [ -n "${FORCE_SCP:-}" ]; then HAVE_RSYNC=""; fi
+
 # In live mode, skip the heavy SEE state dumps -- the JSONL still reports every
 # SEE, so live monitoring loses nothing; only the offline-analysis payload waits.
 LIVE_EXCLUDES=()
@@ -67,19 +73,50 @@ if [ "${PULL_MODE}" != "full" ]; then
     LIVE_EXCLUDES=(--exclude=see_dumps/ --exclude='*.bin')
 fi
 
-for sub in memory compute boot_state; do
+# Pull one channel dir. rsync syncs the whole dir (with live excludes); the scp
+# fallback pulls only *.jsonl in live mode (skipping dumps) and the whole dir in
+# full mode -- same net effect as the rsync excludes.
+pull_channel() {   # $1 = sub-dir (memory|compute|boot_state)
+    local sub="$1"
     mkdir -p "${LOCAL_LOG_DIR}/${sub}"
-    rsync -az --append-verify \
-        "${LIVE_EXCLUDES[@]+"${LIVE_EXCLUDES[@]}"}" \
-        -e "ssh ${SSH_OPTS}" \
-        "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/" \
-        "${LOCAL_LOG_DIR}/${sub}/" \
-        || echo "pull_logs: rsync of ${sub} failed (DUT may be down/rebooting)" >&2
-done
+    if [ -n "${HAVE_RSYNC}" ]; then
+        rsync -az --append-verify \
+            "${LIVE_EXCLUDES[@]+"${LIVE_EXCLUDES[@]}"}" \
+            -e "ssh ${SSH_OPTS}" \
+            "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/" \
+            "${LOCAL_LOG_DIR}/${sub}/" \
+            || echo "pull_logs: rsync of ${sub} failed (DUT may be down/rebooting)" >&2
+    elif [ "${PULL_MODE}" = "full" ]; then
+        # /* so scp copies the dir CONTENTS into dst (not the dir into dst, which
+        # would double-nest as ${sub}/${sub}/). The glob is expanded remotely.
+        scp -q -r ${SSH_OPTS} \
+            "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/*" \
+            "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
+            || echo "pull_logs: scp of ${sub} failed (DUT may be down/rebooting)" >&2
+    else
+        scp -q ${SSH_OPTS} \
+            "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/*.jsonl" \
+            "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
+            || echo "pull_logs: scp of ${sub} jsonl failed (DUT may be down/rebooting)" >&2
+    fi
+}
+
+# Pull one remote file, best-effort (missing file must not fail the run).
+pull_remote_file() {   # $1 = remote path, $2 = local dest
+    if [ -n "${HAVE_RSYNC}" ]; then
+        rsync -az -e "ssh ${SSH_OPTS}" "${DUT_USER}@${DUT_HOST}:$1" "$2" \
+            || echo "pull_logs: $(basename "$1") not pulled (missing or DUT unreachable)" >&2
+    else
+        scp -q ${SSH_OPTS} "${DUT_USER}@${DUT_HOST}:$1" "$2" 2>/dev/null \
+            || echo "pull_logs: $(basename "$1") not pulled (missing or DUT unreachable)" >&2
+    fi
+}
+
+for sub in memory compute boot_state; do pull_channel "${sub}"; done
 
 if [ "${PULL_MODE}" != "full" ]; then
     echo "pull_logs: live mode -- JSONL only (see_dumps/pstore/sidecars deferred to PULL_MODE=full)"
-    echo "pull_logs: completed at $(date -Iseconds)"
+    echo "pull_logs: completed at $(date -Iseconds) [backend: ${HAVE_RSYNC:+rsync}${HAVE_RSYNC:-scp}]"
     exit 0
 fi
 
@@ -88,25 +125,24 @@ fi
 # in the repo tree on the DUT (data/ is git-ignored) -- not under /var/log. Pull
 # it (and the active particles config, for epoch/checksum parameters) next to the
 # compute logs so a pulled tree is self-sufficient for offline analysis.
-# Best-effort: a missing file must not fail the run.
-rsync -az \
-    -e "ssh ${SSH_OPTS}" \
-    "${DUT_USER}@${DUT_HOST}:${DUT_REPO_DIR}/jetson/compute/cuda_particles/data/golden_hashes.txt" \
-    "${LOCAL_LOG_DIR}/compute/golden_hashes.txt" \
-    || echo "pull_logs: golden_hashes.txt not pulled (missing or DUT unreachable)" >&2
-rsync -az \
-    -e "ssh ${SSH_OPTS}" \
-    "${DUT_USER}@${DUT_HOST}:${DUT_REPO_DIR}/jetson/compute/cuda_particles/config/particles.json" \
-    "${LOCAL_LOG_DIR}/compute/particles.json" \
-    || echo "pull_logs: particles.json not pulled (missing or DUT unreachable)" >&2
+pull_remote_file "${DUT_REPO_DIR}/jetson/compute/cuda_particles/data/golden_hashes.txt" \
+                 "${LOCAL_LOG_DIR}/compute/golden_hashes.txt"
+pull_remote_file "${DUT_REPO_DIR}/jetson/compute/cuda_particles/config/particles.json" \
+                 "${LOCAL_LOG_DIR}/compute/particles.json"
 
 # pstore records are small one-shot panic/console dumps; copy them out too.
 # Best-effort: absence of records or an unreachable DUT must not fail the run.
 mkdir -p "${LOCAL_LOG_DIR}/pstore"
-rsync -az \
-    -e "ssh ${SSH_OPTS}" \
-    "${DUT_USER}@${DUT_HOST}:${PSTORE_DIR}/" \
-    "${LOCAL_LOG_DIR}/pstore/" 2>/dev/null \
-    || echo "pull_logs: no pstore records pulled (empty, perms, or DUT unreachable)" >&2
+if [ -n "${HAVE_RSYNC}" ]; then
+    rsync -az -e "ssh ${SSH_OPTS}" \
+        "${DUT_USER}@${DUT_HOST}:${PSTORE_DIR}/" \
+        "${LOCAL_LOG_DIR}/pstore/" 2>/dev/null \
+        || echo "pull_logs: no pstore records pulled (empty, perms, or DUT unreachable)" >&2
+else
+    scp -q -r ${SSH_OPTS} \
+        "${DUT_USER}@${DUT_HOST}:${PSTORE_DIR}/*" \
+        "${LOCAL_LOG_DIR}/pstore/" 2>/dev/null \
+        || echo "pull_logs: no pstore records pulled (empty, perms, or DUT unreachable)" >&2
+fi
 
-echo "pull_logs: completed at $(date -Iseconds)"
+echo "pull_logs: completed at $(date -Iseconds) [backend: ${HAVE_RSYNC:+rsync}${HAVE_RSYNC:-scp}]"
