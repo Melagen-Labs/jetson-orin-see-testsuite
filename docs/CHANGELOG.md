@@ -15,6 +15,21 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### setup-board.sh: warn on missing /var/log/radtest log tree; header clarity
+
+- **`246d8d2` — scripts/setup-board.sh**
+  - Added a pre-flight check that warns (does not fail) if `/var/log/radtest/{compute,memory}`
+    is missing — a fresh git-clone board that skipped the operator log-tree step
+    (`docs/FLASH_AND_BRINGUP.md` 1b) would otherwise fail silently at the first log
+    write, since the compute/memory channels run as `User=melagen` and can't write a
+    root-owned dir. Deliberately does **not** create the tree (a root `mkdir` would be
+    root-owned and unwritable by melagen); the operator step sets `melagen:radlog`
+    mode-2750 ownership. Verified end-to-end on orin-nano-01 via the coordinator GUI
+    (`START_TEST` → both workloads ran with beam metadata → `STOP_TEST` → `results/test_2.csv`,
+    `run_id` correlated across GUI/compute/memory logs, 0 SEEs with no beam).
+  - Header now states it installs+enables all five services and calls out the log-tree
+    prerequisite.
+
 ### docs: correct FLASH_AND_BRINGUP master status (services enabled; arbiter = direct Ethernet)
 
 - **`eaae778` — docs/FLASH_AND_BRINGUP.md**

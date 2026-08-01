@@ -6,12 +6,18 @@
 #
 # It gives the board its identity, syncs the code, installs the GPU deps, builds
 # the compute channel, generates this board's own golden table, arms the channels,
-# and installs the systemd services. Re-running is safe: it just updates,
-# reinstalls, rebuilds, and re-arms.
+# and installs+enables all five deployed systemd services (compute, GPU-memory,
+# test-control, heartbeat, and the two boot-state loggers). Re-running is safe: it
+# just updates, reinstalls, rebuilds, and re-arms.
 #
 # Memory testing is GPU-only (channel 2b, CuPy on GPU DRAM). The CPU/system-RAM
 # tester (channel 2a) still exists in the repo but is NOT deployed -- the campaign
 # minimizes CPU workload, so no CPU memory service is installed or enabled.
+#
+# PREREQUISITE (operator, once per board): the /var/log/radtest log tree with
+# melagen:radlog / mode-2750 ownership -- see docs/FLASH_AND_BRINGUP.md 1b. Imaged
+# clones inherit it; a fresh git-clone board needs it created first, or the
+# compute/memory channels (User=melagen) can't write their logs.
 
 set -euo pipefail   # exit on any error / unset variable / failed pipe stage
 
@@ -31,6 +37,18 @@ BOOT="${REPO}/jetson/boot_state"                       # boot-state uptime/boot-
 # Arbiter IP the heartbeat sender targets on the beam-line ethernet segment.
 # Overridable per board without editing the unit:  ARBITER_IP=x.x.x.x ./setup-board.sh 03
 ARBITER_IP="${ARBITER_IP:-192.168.1.10}"
+
+# ---- pre-flight ------------------------------------------------------------
+# The compute/memory channels write to /var/log/radtest as User=melagen, so the
+# tree must already exist with melagen-writable ownership (docs/FLASH_AND_BRINGUP.md
+# 1b). We deliberately DON'T create it here: a plain root mkdir would be root-owned
+# and melagen couldn't write. Warn loudly if it's missing rather than fail silently
+# at the first log write.
+if [ ! -d /var/log/radtest/compute ] || [ ! -d /var/log/radtest/memory ]; then
+  echo "WARNING: /var/log/radtest/{compute,memory} missing -- create the log tree per"
+  echo "         docs/FLASH_AND_BRINGUP.md 1b (operator, sudo) or the compute/memory"
+  echo "         channels can't write logs. Continuing with bring-up anyway."
+fi
 
 # ---- 1. identity -----------------------------------------------------------
 # A clone is a byte-for-byte copy of the master, so it inherits three things that
