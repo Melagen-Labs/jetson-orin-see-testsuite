@@ -31,6 +31,7 @@ set -euo pipefail
 DUT_HOST="${DUT_HOST:-192.168.1.20}"
 DUT_USER="${DUT_USER:-radpull}"
 DUT_LOG_DIR="${DUT_LOG_DIR:-/var/log/radtest}"
+DUT_REPO_DIR="${DUT_REPO_DIR:-/home/melagen/see-testsuite}"
 LOCAL_LOG_DIR="${LOCAL_LOG_DIR:-./arbiter_logs}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/radtest_pull}"
 PSTORE_DIR="${PSTORE_DIR:-/sys/fs/pstore}"
@@ -49,6 +50,23 @@ for sub in memory compute boot_state; do
         "${LOCAL_LOG_DIR}/${sub}/" \
         || echo "pull_logs: rsync of ${sub} failed (DUT may be down/rebooting)" >&2
 done
+
+# Post-processing sidecars: the compute triage tool (see_dump_triage.py) hashes
+# each dumped checkpoint against the board's PER-BOARD golden table, which lives
+# in the repo tree on the DUT (data/ is git-ignored) -- not under /var/log. Pull
+# it (and the active particles config, for epoch/checksum parameters) next to the
+# compute logs so a pulled tree is self-sufficient for offline analysis.
+# Best-effort: a missing file must not fail the run.
+rsync -az \
+    -e "ssh ${SSH_OPTS}" \
+    "${DUT_USER}@${DUT_HOST}:${DUT_REPO_DIR}/jetson/compute/cuda_particles/data/golden_hashes.txt" \
+    "${LOCAL_LOG_DIR}/compute/golden_hashes.txt" \
+    || echo "pull_logs: golden_hashes.txt not pulled (missing or DUT unreachable)" >&2
+rsync -az \
+    -e "ssh ${SSH_OPTS}" \
+    "${DUT_USER}@${DUT_HOST}:${DUT_REPO_DIR}/jetson/compute/cuda_particles/config/particles.json" \
+    "${LOCAL_LOG_DIR}/compute/particles.json" \
+    || echo "pull_logs: particles.json not pulled (missing or DUT unreachable)" >&2
 
 # pstore records are small one-shot panic/console dumps; copy them out too.
 # Best-effort: absence of records or an unreachable DUT must not fail the run.
