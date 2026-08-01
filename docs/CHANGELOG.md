@@ -37,7 +37,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
   - Tests +1 (**63 pass**). Verified headless: history suppressed, a newly appended
     event still shown, and the pull invoked with `PULL_MODE=full` plus the correct
     `DUT_HOST`/`LOCAL_LOG_DIR`.
-- **`_pending_` — docs/FLASH_AND_BRINGUP.md**
+- **`5ac9f25` — docs/FLASH_AND_BRINGUP.md**
   - Tailscale enrollment step now also sets the **node name**
     (`sudo tailscale set --operator=melagen --hostname=orin-nano-0N`) — a clone
     otherwise reports the image's old hostname, so all 7 boards appear as `ubuntu`
