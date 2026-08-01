@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### setup-board.sh: warn on missing /var/log/radtest log tree; header clarity
 
-- **`_pending_` — scripts/setup-board.sh**
+- **`246d8d2` — scripts/setup-board.sh**
   - Added a pre-flight check that warns (does not fail) if `/var/log/radtest/{compute,memory}`
     is missing — a fresh git-clone board that skipped the operator log-tree step
     (`docs/FLASH_AND_BRINGUP.md` 1b) would otherwise fail silently at the first log
