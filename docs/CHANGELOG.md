@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Chaos mode: continuous random GPU bit-flips (test only) — verified on hardware
 
-- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp**
+- **`8b7c527` — jetson/compute/cuda_particles/particles_main.cpp**
   - New **TEST-ONLY `--chaos`** (+ `--chaos-prob` default 0.01, `--chaos-seed`
     default 1): each step, with probability `chaos-prob`, flips a random bit of a
     random float in the device pos buffer — the random-in-time-and-place cousin of
