@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### SEE post-processing: offline dump triage tool + pull the per-board golden table
 
-- **`_pending_` — jetson/compute/cuda_particles/tools/see_dump_triage.py** (new)
+- **`c57e53e` — jetson/compute/cuda_particles/tools/see_dump_triage.py** (new)
   - First actual post-processing code for the SEE state dumps (previously the
     offline reconstruction existed only as a README concept). Stdlib-only CLI, runs
     on a laptop against a pulled `arbiter_logs/compute/` tree. Per dumped epoch it:
@@ -32,14 +32,14 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
   - **Documented limitation:** 1-vs-2+ upsets in one epoch (grouped SEEs) still
     needs a reference-board replay (same build, bit-exact determinism); the dump +
     golden + config carry everything that replay needs.
-- **`_pending_` — arbiter/pull_logs.sh**
+- **`c57e53e` — arbiter/pull_logs.sh**
   - The golden table (`data/golden_hashes.txt`) is **per-board and git-ignored** —
     it lived only in the repo tree on the DUT, so a pulled log tree could not be
     post-processed off-board. Now best-effort rsyncs `golden_hashes.txt` **and** the
     active `config/particles.json` into `${LOCAL_LOG_DIR}/compute/` (new
     `DUT_REPO_DIR` env, default `/home/melagen/see-testsuite`), making the pulled
     tree self-sufficient for `see_dump_triage.py`. Missing files never fail the run.
-- Paired coordinator change (live panel, teammate repo, `_pending_`):
+- Paired coordinator change (live panel, teammate repo, `660ab7d`):
   `see_monitor.py` now surfaces `see_event` records as a **"Post-processing dump"**
   line (`epoch N -> see_dumps/epoch_N_iter_M.bin`, or `NO dump saved`) and appends
   the dump path to `sim_fault` lines — the operator sees in real time whether each
@@ -48,7 +48,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### §6a: test runs auto-last a configurable duration (default 100 s), DUT-owned timer
 
-- **`_pending_` — jetson/control/test_control.py**
+- **`72a7b00` — jetson/control/test_control.py**
   - START_TEST now accepts an optional **`duration_s`** (default `default_duration_s`,
     100). `validate()` rejects a non-positive / non-numeric / out-of-range value
     (bool is rejected explicitly since it is an `int` subclass; cap `max_duration_s`
@@ -65,7 +65,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
     auto-STOP below) re-scans the persisted logs via `summarize_run()`, so it returns
     the same summary whether or not the DUT's own timer already stopped the services
     (`systemctl stop` is idempotent).
-- Paired coordinator change (teammate repo `melagen-test-coordinator`, `_pending_`):
+- Paired coordinator change (teammate repo `melagen-test-coordinator`, `660ab7d`):
   - `coordinator/constants.py`: add `DEFAULT_DURATION_S` (100) and `MAX_DURATION_S`
     (86400).
   - `coordinator/request.py`: `TestRequest` gains a `duration_s` field;
@@ -86,7 +86,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### §6b: live SEE panel on the coordinator via log-tailing (no new DUT push)
 
-- Paired coordinator change (teammate repo `melagen-test-coordinator`, `_pending_`):
+- Paired coordinator change (teammate repo `melagen-test-coordinator`, `660ab7d`):
   - New `coordinator/see_monitor.py`: `SeeLogTailer` tails the arbiter's local
     `arbiter_logs/{compute,memory}/*.jsonl` mirror (the existing **radpull** rsync,
     `arbiter/pull_logs.sh`) — **no network access in the coordinator**. Per-file byte
