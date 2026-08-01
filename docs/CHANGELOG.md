@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### docs: correct FLASH_AND_BRINGUP master status (services enabled; arbiter = direct Ethernet)
 
-- **`_pending_` — docs/FLASH_AND_BRINGUP.md**
+- **`eaae778` — docs/FLASH_AND_BRINGUP.md**
   - The master verified-state box said heartbeat + boot_state were "not yet enabled
     on the master." They are now **enabled and verified live on orin-nano-01
     (2026-08-01)** — flipped ⚠️ → ✅. Also clarified the heartbeat arbiter is the
