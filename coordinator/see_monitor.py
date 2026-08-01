@@ -93,14 +93,24 @@ class SeeLogTailer:
     """Track per-file read offsets under an ``arbiter_logs`` root and yield only the
     NEW SEE events on each :meth:`poll`. Safe to call repeatedly on a GUI timer."""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, from_start: bool = False) -> None:
         self.root = Path(root)
         # Absolute file path -> number of bytes already consumed.
         self._offsets: dict[str, int] = {}
+        # A live monitor should show what happens FROM NOW ON. Without this, the
+        # first poll replays every historical SEE in the mirror (previous runs,
+        # or leftover hand-seeded demo lines) as though they just occurred. So on
+        # the first poll we fast-forward existing files to their current end and
+        # emit nothing; files that appear later are genuinely new and get read
+        # whole. Pass from_start=True to replay history instead (tests/forensics).
+        self._primed = from_start
 
     def poll(self) -> list[dict[str, Any]]:
         """Return SEE events (dicts with ts / jetson_id / type_key / detail) that
         appeared since the previous poll, oldest first. Missing root/dirs -> []."""
+        if not self._primed:
+            self._prime()
+            return []
         events: list[dict[str, Any]] = []
         for sub in SEE_LOG_SUBDIRS:
             directory = self.root / sub
@@ -109,6 +119,20 @@ class SeeLogTailer:
             for path in sorted(directory.glob("*.jsonl")):
                 events.extend(self._read_new(path))
         return events
+
+    def _prime(self) -> None:
+        """Fast-forward every existing log to its current end, so only events
+        appended after the monitor started are reported."""
+        for sub in SEE_LOG_SUBDIRS:
+            directory = self.root / sub
+            if not directory.is_dir():
+                continue
+            for path in sorted(directory.glob("*.jsonl")):
+                try:
+                    self._offsets[str(path)] = path.stat().st_size
+                except OSError:
+                    continue
+        self._primed = True
 
     def _read_new(self, path: Path) -> list[dict[str, Any]]:
         """Read bytes appended to one file since last time, up to the last complete

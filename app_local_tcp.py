@@ -54,6 +54,22 @@ def main() -> None:
             "SEE panel tails these. Default: ./arbiter_logs."
         ),
     )
+    parser.add_argument(
+        "--pull-script",
+        default=None,
+        help=(
+            "Path to the arbiter's pull_logs.sh. When given, a PULL_MODE=full "
+            "pull runs automatically after each test stops, fetching the SEE "
+            "state dumps and golden table for offline post-processing. Requires "
+            "bash+rsync (i.e. run the GUI on the arbiter box). Omit to skip."
+        ),
+    )
+    parser.add_argument(
+        "--pull-timeout",
+        type=float,
+        default=900.0,
+        help="Max seconds for the end-of-test full pull (default: 900).",
+    )
     args = parser.parse_args()
 
     root = tk.Tk()
@@ -68,6 +84,8 @@ def main() -> None:
         master=root,
         transport=transport,
         see_log_root=args.see_log_root,
+        pull_script=args.pull_script,
+        pull_timeout_s=args.pull_timeout,
     )
 
     root.mainloop()

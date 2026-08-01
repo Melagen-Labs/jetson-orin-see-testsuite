@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import subprocess
+import threading
 import tkinter as tk
 from datetime import datetime
 from enum import Enum
@@ -73,6 +76,8 @@ class TestCoordinatorApp(ttk.Frame):
         transport: Transport | None = None,
         event_logger: EventLogger | None = None,
         see_log_root: str | Path | None = None,
+        pull_script: str | Path | None = None,
+        pull_timeout_s: float = 900.0,
     ) -> None:
         super().__init__(master, padding=20)
 
@@ -88,6 +93,14 @@ class TestCoordinatorApp(ttk.Frame):
         )
         self._see_tailer = SeeLogTailer(self._see_log_root)
         self._see_after_id: str | None = None
+
+        # End-of-run full log pull. The periodic arbiter pull runs PULL_MODE=live
+        # (JSONL only) to keep the DUT light during a test; this fires PULL_MODE=full
+        # once the test stops, fetching the ~10 MB per-SEE state dumps + golden table
+        # that see_dump_triage.py needs. Requires the GUI to run on the arbiter box
+        # (bash + rsync + the pull key). Opt-in: no --pull-script, no pull attempted.
+        self._pull_script = str(pull_script) if pull_script else None
+        self._pull_timeout_s = pull_timeout_s
 
         self.transport_mode = getattr(
             self.transport,
@@ -805,6 +818,76 @@ class TestCoordinatorApp(ttk.Frame):
             )
             return False
 
+    def _trigger_full_pull(self, run_id: str) -> None:
+        """After a test stops, pull the heavy post-processing data (SEE state dumps,
+        pstore, golden table) that the in-run live pulls deliberately skipped. Runs
+        off the Tk thread so a multi-minute rsync never freezes the GUI; all results
+        are reported back into the activity log."""
+
+        if not self._pull_script:
+            return
+
+        script = self._pull_script
+        timeout = self._pull_timeout_s
+        local_root = str(self._see_log_root)
+        host = getattr(self.transport, "host", None)
+
+        self._append_log(
+            f"Fetching full post-processing data for {run_id[:8]} "
+            "(PULL_MODE=full)..."
+        )
+
+        def worker() -> None:
+            env = dict(os.environ)
+            env["PULL_MODE"] = "full"
+            env["LOCAL_LOG_DIR"] = local_root
+            if host:
+                env["DUT_HOST"] = str(host)
+            try:
+                result = subprocess.run(
+                    ["bash", script],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                if result.returncode == 0:
+                    message = (
+                        "Full log pull complete "
+                        f"-> {local_root} (dumps ready for see_dump_triage.py)"
+                    )
+                else:
+                    detail = (result.stderr or result.stdout or "").strip()
+                    last = detail.splitlines()[-1] if detail else "no output"
+                    message = (
+                        "Full log pull FAILED "
+                        f"(rc={result.returncode}): {last}"
+                    )
+            except FileNotFoundError:
+                message = (
+                    "Full log pull skipped: 'bash' not found. Run the GUI on the "
+                    "arbiter box, or pull by hand: PULL_MODE=full bash pull_logs.sh"
+                )
+            except subprocess.TimeoutExpired:
+                message = (
+                    f"Full log pull timed out after {timeout:g}s "
+                    "(many/large dumps?) - pull by hand to finish"
+                )
+            except Exception as error:  # noqa: BLE001 - never kill the GUI
+                message = f"Full log pull error: {error}"
+
+            # Marshal back onto the Tk thread; the GUI may be gone by now.
+            try:
+                self.master.after(0, lambda: self._append_log(message))
+            except (tk.TclError, RuntimeError):
+                pass
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="full-log-pull",
+        ).start()
+
     def _schedule_auto_stop(self, duration_s: int) -> None:
         """Arm the coordinator-side auto-STOP timer for `duration_s` seconds."""
 
@@ -1231,6 +1314,9 @@ class TestCoordinatorApp(ttk.Frame):
                 and "by_type" in summary
             ):
                 csv_path = self._save_result_csv(summary)
+
+            # The run is over, so the heavy data is safe to move now.
+            self._trigger_full_pull(stopped_target_id)
 
             messagebox.showinfo(
                 "Test Complete",

@@ -151,7 +151,7 @@ class TestSeeLogTailer(unittest.TestCase):
                 '"anomaly":true,"epoch":2}',
             )
 
-            tailer = SeeLogTailer(root)
+            tailer = SeeLogTailer(root, from_start=True)
             first = tailer.poll()
             self.assertEqual(len(first), 1)
             self.assertEqual(first[0]["type_key"], "cuda_golden_mismatch")
@@ -184,7 +184,7 @@ class TestSeeLogTailer(unittest.TestCase):
                     '"status":"ok","address":"0x1"}'
                 )
 
-            tailer = SeeLogTailer(root)
+            tailer = SeeLogTailer(root, from_start=True)
             self.assertEqual(tailer.poll(), [])  # incomplete line held back
 
             # Finish the line -> now it is delivered exactly once.
@@ -195,8 +195,37 @@ class TestSeeLogTailer(unittest.TestCase):
             self.assertEqual(events[0]["type_key"], "gpu_mem_upset")
 
     def test_missing_root_is_safe(self) -> None:
-        tailer = SeeLogTailer(Path("does-not-exist-xyz"))
+        tailer = SeeLogTailer(Path("does-not-exist-xyz"), from_start=True)
         self.assertEqual(tailer.poll(), [])
+
+    def test_history_is_not_replayed_by_default(self) -> None:
+        """A live monitor must not report pre-existing events (previous runs, or
+        hand-seeded demo lines) as if they just happened."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            compute = root / "compute"
+            compute.mkdir()
+            log = compute / "cuda_particles.jsonl"
+
+            # Pre-existing history, written BEFORE the monitor starts.
+            self._write_line(
+                log,
+                '{"ts":"old","jetson_id":"n","event":"mem_upset",'
+                '"status":"ok","address":"0xOLD"}',
+            )
+
+            tailer = SeeLogTailer(root)          # default: from now on
+            self.assertEqual(tailer.poll(), [])  # history skipped
+
+            # Something that happens after start IS reported.
+            self._write_line(
+                log,
+                '{"ts":"new","jetson_id":"n","event":"mem_upset",'
+                '"status":"ok","address":"0xNEW"}',
+            )
+            events = tailer.poll()
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["ts"], "new")
 
 
 if __name__ == "__main__":
