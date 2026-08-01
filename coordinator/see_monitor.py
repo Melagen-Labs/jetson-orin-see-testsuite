@@ -68,12 +68,16 @@ def classify_see(record: dict[str, Any]) -> tuple[str, str] | None:
         return "cuda_shutdown", detail
 
     if event == "see_event":
-        epoch = record.get("epoch")
-        where = f"epoch {epoch}" if epoch is not None else "epoch ?"
+        # The SEE itself (and its subtype) is reported by the paired anomalous
+        # `checksum` record. This see_event marker is only worth a panel line when it
+        # confirms a post-processing dump was saved; a dumpless one would just be a
+        # redundant "NO dump" echo, so drop it.
         dump = record.get("dump")
         if dump:
+            epoch = record.get("epoch")
+            where = f"epoch {epoch}" if epoch is not None else "epoch ?"
             return "see_dump_saved", f"{where} -> {dump}"
-        return "see_dump_saved", f"{where} -> NO dump saved"
+        return None
 
     if event == "checksum" and (
         status == "anomaly" or record.get("anomaly") is True

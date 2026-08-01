@@ -103,16 +103,16 @@ class TestClassifySee(unittest.TestCase):
         self.assertIn("epoch 4", detail)
         self.assertIn("epoch_4_iter_5000.bin", detail)
 
-    def test_see_event_without_dump_is_flagged(self) -> None:
+    def test_see_event_without_dump_is_dropped(self) -> None:
+        # A dumpless see_event adds no info beyond its paired checksum record, so it
+        # is suppressed to keep the live panel readable.
         record = {
             "event": "see_event",
             "status": "anomaly",
             "epoch": 6,
             "dump": "",
         }
-        key, detail = classify_see(record)
-        self.assertEqual(key, "see_dump_saved")
-        self.assertIn("NO dump", detail)
+        self.assertIsNone(classify_see(record))
 
     def test_sim_fault_reports_dump(self) -> None:
         record = {
