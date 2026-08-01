@@ -111,6 +111,25 @@ cp data/golden_hashes.txt /tmp/inj/ && python3 tools/see_dump_triage.py --logs /
 <0..31>` (script random values) to hit different particles/bits. `count =
 num_particles × 4`.
 
+**Chaos mode** (`--chaos`, the random-in-time-and-place cousin): each step, with
+probability `--chaos-prob` (default 0.01), flips a random bit of a random GPU float.
+`--chaos-seed` (default 1) keeps it repeatable. Produces a continuous stream of
+mixed, randomly-placed upsets — stresses the whole detect→dump→report chain and, if a
+corrupted value derails a kernel, the CUDA-fault recovery path (→ `sim_fault` →
+service restart). Verified on `orin-nano-01`: `--chaos --chaos-prob 0.02` over 3
+epochs → 3 SEEs, all `"chaos":true`. **Ceiling (honest):** flipping bits in *valid*
+GPU buffers corrupts values (detected) but rarely causes an illegal access, so it
+won't reboot/hang the SoC — the GPU MMU protects the rest of the system. A full-board
+crash is the beam's domain; chaos validates detection + CUDA-fault recovery, not
+whole-system reboot.
+
+Both `--inject` and `--chaos` are **per-invocation CLI flags — never in
+`cuda_particles.service`** — so they affect only that one manual run; the next real
+test is clean. Both write a loud `synthetic_run` marker at the top of the log and tag
+every event `"injected":true` / `"chaos":true`, so synthetic data can never be
+mistaken for a real campaign event. Always run them against a throwaway `log_dir`
+(the JSONL records and `.bin` dumps persist on disk wherever `log_dir` points).
+
 > **Subtype note.** The live panel / CSV label an SEE by the **final** checkpoint's
 > fields with `mismatch` checked first, so an `oob` hit that renormalizes before the
 > epoch ends is labeled `cuda_golden_mismatch`, not `cuda_anomaly`. That's consistent

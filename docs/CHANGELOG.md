@@ -15,6 +15,29 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### Chaos mode: continuous random GPU bit-flips (test only) — verified on hardware
+
+- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp**
+  - New **TEST-ONLY `--chaos`** (+ `--chaos-prob` default 0.01, `--chaos-seed`
+    default 1): each step, with probability `chaos-prob`, flips a random bit of a
+    random float in the device pos buffer — the random-in-time-and-place cousin of
+    `--inject`. Stresses the detect→dump→report chain with mixed, randomly-placed
+    upsets, and the CUDA-fault recovery path if a corrupted value derails a kernel
+    (surfaces as `sim_fault` → service restart, the existing path). Refuses to run
+    with `--generate-golden`; validates `chaos-prob ∈ (0,1]`.
+  - **Poison-pill parity with `--inject`:** every synthetic run (inject *or* chaos)
+    now writes a loud **`synthetic_run`** marker at the top of the log, and
+    `see_event` records carry both `"injected"` and `"chaos"` booleans — so injected
+    or chaos data can never be confused with real campaign events, even at a glance.
+  - **Ceiling documented:** flipping bits in *valid* GPU buffers corrupts values
+    (detected) but rarely triggers an illegal access, so chaos won't reboot/hang the
+    SoC — the GPU MMU protects the rest of the system. Whole-board crash stays the
+    beam's domain; chaos validates detection + CUDA-fault recovery.
+  - **Verified on `orin-nano-01`:** `--chaos --chaos-prob 0.02 --chaos-seed 7` over 3
+    epochs → 3 SEEs, all `"chaos":true`, `synthetic_run` marker present. Full battery
+    (inject bitflip/nan/oob + chaos) run against an isolated `/tmp` log dir; the real
+    golden table (20 lines) and real logs were confirmed untouched.
+
 ### Fault injection: induce every compute SEE type on demand (no beam) — verified on hardware
 
 - **`549a37f` — jetson/compute/cuda_particles/particles_main.cpp**

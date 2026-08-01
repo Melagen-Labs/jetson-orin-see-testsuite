@@ -164,6 +164,20 @@ int main(int argc, char **argv)
     unsigned int injectBit = 22;            // bit to flip (mantissa-ish, visible)
     size_t injectIndex = 0;                 // which float of the pos buffer
 
+    // --- chaos mode (TEST ONLY, default OFF) ---------------------------------
+    // The random-in-time-and-place cousin of --inject: at each step, with
+    // probability chaosProb, flip a random bit of a random float in the device
+    // pos buffer. Produces a continuous stream of randomly-placed upsets (mixed
+    // subtypes) to stress the detect->dump->report chain and, when a corrupted
+    // value derails a kernel, the CUDA-fault recovery path (surfaces as a
+    // sim_fault -> service restart). Like --inject, it is a per-invocation flag
+    // (never in cuda_particles.service), so it affects only this one manual run.
+    // What it does NOT do: reboot/hang the whole SoC -- the GPU MMU protects the
+    // rest of the system, so a full board crash remains the beam's domain.
+    bool chaos = false;
+    double chaosProb = 0.01;                // per-step probability of a flip
+    unsigned int chaosSeed = 1u;            // deterministic by default (repeatable)
+
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--config") && i + 1 < argc) {
             configPath = argv[++i];
@@ -177,14 +191,24 @@ int main(int argc, char **argv)
             injectBit = (unsigned int)strtoul(argv[++i], nullptr, 10) & 31u;
         } else if (!strcmp(argv[i], "--inject-index") && i + 1 < argc) {
             injectIndex = (size_t)strtoull(argv[++i], nullptr, 10);
+        } else if (!strcmp(argv[i], "--chaos")) {
+            chaos = true;
+        } else if (!strcmp(argv[i], "--chaos-prob") && i + 1 < argc) {
+            chaosProb = strtod(argv[++i], nullptr);
+        } else if (!strcmp(argv[i], "--chaos-seed") && i + 1 < argc) {
+            chaosSeed = (unsigned int)strtoul(argv[++i], nullptr, 10);
         } else if (!strcmp(argv[i], "--help")) {
             printf("usage: %s [--config <path>] [--generate-golden]\n"
                    "       [--inject bitflip|nan|oob] [--inject-at <iter>]\n"
                    "       [--inject-bit <0-31>] [--inject-index <float idx>]\n"
+                   "       [--chaos] [--chaos-prob <0..1>] [--chaos-seed <n>]\n"
                    "\n"
                    "  --inject  TEST ONLY. Corrupts one float of GPU particle state at\n"
                    "            --inject-at to exercise a detector without a beam.\n"
-                   "            Events are tagged \"injected\":true. Never use in a real run.\n",
+                   "  --chaos   TEST ONLY. Flips a random bit of random GPU state each\n"
+                   "            step with probability --chaos-prob (default 0.01).\n"
+                   "  Both tag their events (\"injected\"/\"chaos\":true) and are per-run\n"
+                   "  CLI flags -- never in the service. Never use in a real beam run.\n",
                    argv[0]);
             return 0;
         }
@@ -195,11 +219,16 @@ int main(int argc, char **argv)
         fprintf(stderr, "[cuda_particles] ERROR: --inject must be bitflip|nan|oob\n");
         return 1;
     }
-    if (!injectMode.empty() && generateGolden) {
-        fprintf(stderr, "[cuda_particles] ERROR: refusing to --inject while generating "
+    if ((!injectMode.empty() || chaos) && generateGolden) {
+        fprintf(stderr, "[cuda_particles] ERROR: refusing to inject/chaos while generating "
                         "the golden table (it would bake corruption into the baseline)\n");
         return 1;
     }
+    if (chaos && !(chaosProb > 0.0 && chaosProb <= 1.0)) {
+        fprintf(stderr, "[cuda_particles] ERROR: --chaos-prob must be in (0, 1]\n");
+        return 1;
+    }
+    if (chaos) srand(chaosSeed);
 
     Config cfg;
     if (!loadConfig(configPath, cfg)) {
@@ -306,6 +335,20 @@ int main(int argc, char **argv)
     unsigned long long seeEvents = 0; // # epochs with >=1 SEE (one-per-epoch count)
     int corruptionSeen = 0;
     bool injected = false;             // a TEST-ONLY fault was injected this run
+    unsigned long long chaosHits = 0;  // TEST-ONLY chaos-mode flips applied
+
+    if ((chaos || !injectMode.empty()) && log.isOpen()) {
+        // Loud, unambiguous marker at the top of the log so nobody mistakes a
+        // synthetic run for real data even before the tagged events appear.
+        std::ostringstream os;
+        os << envelope(cfg, "synthetic_run", "compute", "info")
+           << "\"injected\":" << (injectMode.empty() ? "false" : "true") << ","
+           << "\"inject_mode\":\"" << injectMode << "\","
+           << "\"chaos\":" << (chaos ? "true" : "false") << ","
+           << "\"chaos_prob\":" << chaosProb << ","
+           << metaFields(cfg) << "}";
+        log.writeLine(os.str());
+    }
 
     while (!g_stop) {
         // Deterministic reset to the known initial state (srand(1973) inside).
@@ -356,6 +399,24 @@ int main(int argc, char **argv)
                        << metaFields(cfg) << "}";
                     log.writeLine(os.str());
                 }
+            }
+
+            // TEST-ONLY chaos: random bit, random float, random time. Ignores the
+            // cudaMemcpy return -- if chaos derails the context, the next checkpoint
+            // memcpy (checkCudaErrors) catches it and logs a sim_fault, exactly the
+            // path a kernel-crashing upset takes.
+            if (chaos && ((double)rand() / (double)RAND_MAX) < chaosProb) {
+                float *dPos = (float *)psystem.getCudaPosVBO();
+                const size_t idx = (size_t)rand() % count;
+                const unsigned int bit = (unsigned int)rand() & 31u;
+                float v = 0.0f;
+                cudaMemcpy(&v, dPos + idx, sizeof(float), cudaMemcpyDeviceToHost);
+                uint32_t bits;
+                memcpy(&bits, &v, sizeof(bits));
+                bits ^= (1u << bit);
+                memcpy(&v, &bits, sizeof(v));
+                cudaMemcpy(dPos + idx, &v, sizeof(float), cudaMemcpyHostToDevice);
+                chaosHits++;
             }
 
             if (step % K == 0) {
@@ -462,6 +523,7 @@ int main(int argc, char **argv)
                    << "\"iter\":" << totalIter << ",\"epoch\":" << epoch << ","
                    << "\"see_event\":true,\"see_events\":" << seeEvents << ","
                    << "\"injected\":" << (injected ? "true" : "false") << ","
+                   << "\"chaos\":" << (chaos ? "true" : "false") << ","
                    << "\"hash\":\"" << hbuf << "\",\"golden\":\"" << gbuf << "\","
                    << "\"dump\":\"" << jsonEscape(dumpRel) << "\","
                    << "\"dump_checkpoints\":" << capturedCk << ","
