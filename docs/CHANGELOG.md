@@ -15,6 +15,16 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### docs: correct FLASH_AND_BRINGUP master status (services enabled; arbiter = direct Ethernet)
+
+- **`eaae778` — docs/FLASH_AND_BRINGUP.md**
+  - The master verified-state box said heartbeat + boot_state were "not yet enabled
+    on the master." They are now **enabled and verified live on orin-nano-01
+    (2026-08-01)** — flipped ⚠️ → ✅. Also clarified the heartbeat arbiter is the
+    direct-Ethernet `192.168.1.10` (the `setup-board.sh` default) and that **Tailscale
+    is remote-management only (SSH / `git pull`), never the arbiter/test data path** —
+    the campaign link is the direct Ethernet cable (§4).
+
 ### compute + memory: concise "SEE Detected" operator line during a run
 
 - **`89f6f41` — jetson/compute/cuda_particles/particles_main.cpp, jetson/memory/mem_check.py**

@@ -66,12 +66,15 @@ A master-ready board has:
 >   `DEPLOYMENT.md` 2026-07-30 snapshot is stale). The `heartbeat_sender` and both
 >   `boot_state_logger` units carried a stale `/opt/radtest` path until 2026-08-01;
 >   now fixed. Nothing to cut over.
-> - ⚠️ **Services** — `cuda_particles`, `mem_check_gpu`, `test_control` enabled on
->   clone paths; CPU `mem_check` disabled (GPU-only); ARMED workloads inactive
->   except `test_control` (correct stopped state) when idle. **`heartbeat_sender` +
->   `boot_state_logger` (×2) were added to `setup-board.sh` on 2026-08-01 but are
->   not yet enabled on the master** — re-run `setup-board.sh 01`, or the always-on
->   install block in [`SERVICES.md`](SERVICES.md), to wire them in.
+> - ✅ **Services** — all five deployed units are enabled on clone paths and
+>   verified live on the master (2026-08-01): `cuda_particles`, `mem_check_gpu`,
+>   `test_control`, `heartbeat_sender`, and both `boot_state_logger` units. The CPU
+>   `mem_check` unit is disabled (GPU-only). The ARMED workloads sit inactive until a
+>   run is armed/started (correct idle state); `test_control`, `heartbeat_sender`,
+>   and the boot-state loggers run continuously. The heartbeat targets the
+>   direct-Ethernet arbiter `192.168.1.10` — the `setup-board.sh` default. **Tailscale
+>   is remote-management only (SSH / `git pull`), never the arbiter/test data path;
+>   the campaign link is the direct Ethernet cable (§4).**
 > - ✅ **Named `orin-nano-01`** — `setup-board.sh 01` has been run (§1a).
 > - ✅ **Hardened** — watchdog + fast panic reboot + headless applied (§1c).
 > - ✅ **Ethernet-tested** — the §4 checks pass on the master itself (§1d).
