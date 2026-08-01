@@ -30,6 +30,7 @@ object has arrived).
   "beam_energy_mev": 100,
   "shielding_material": "MLC1",
   "shielding_thickness_mm": 12,
+  "duration_s": 100,
   "sent_at_utc": "2026-07-31T15:00:00.000Z"
 }
 ```
@@ -43,6 +44,7 @@ Validated against (mirrors the sender's spec, held in `config/test_control.json`
 | `beam_energy_mev` | one of `53, 100, 200` |
 | `shielding_material` | one of `Aluminium, MLC1, MLC2` |
 | `shielding_thickness_mm` | one of `8, 12, 16` |
+| `duration_s` | **optional**; positive number ≤ `max_duration_s` (86400). Default `default_duration_s` (100) |
 | `request_id`, `sent_at_utc` | required (present) |
 
 A request failing any rule is **rejected** (no action taken) with an `error` reply.
@@ -58,9 +60,13 @@ A request failing any rule is **rejected** (no action taken) with an `error` rep
   "jetson_id": "orin-nano-03",
   "applied": {"run_id": "unique-request-id", "beam_energy": "100MeV", "shield_config": "MLC1_12mm"},
   "channels": [{"name": "compute", "service": "cuda_particles.service", "ok": true, "detail": "restart ok"}],
+  "duration_s": 100,
   "handled_at_utc": "2026-07-31T15:00:00.123Z"
 }
 ```
+
+The START ack echoes the effective **`duration_s`** (the value sent, or the default
+applied when the field was omitted) so the sender can confirm the run length in force.
 
 **`status` is `ACCEPTED` on success, `REJECTED` on failure** (invalid request or any
 channel failed to start/stop). This vocabulary is required by the coordinator's GUI
@@ -115,6 +121,19 @@ For each configured channel (compute + GPU memory), in order:
 
 **Idempotency:** a repeated `request_id` is acknowledged `ok` without re-acting,
 so an arbiter retry can't double-start.
+
+**DUT-owned run timer (auto-stop).** After starting the channels, the receiver arms
+a local `threading.Timer` for `duration_s` (default 100). When it fires it does
+exactly what a manual STOP does — disarm each `ARMED` flag, `systemctl stop` each
+channel, `summarize_run()`, and write an `auto_stop` control-log record — so a run
+ends on time **even if the network drops** between arbiter and DUT. A manual
+`STOP_TEST` still works and **cancels** the pending timer (whichever fires first
+wins); a new `START_TEST` **replaces** any timer still pending. Because the summary
+is recomputed by re-scanning the persisted logs, a later STOP (e.g. the coordinator's
+mirror auto-STOP) still returns the correct `summary` even though the services were
+already stopped — `systemctl stop` is idempotent. The coordinator schedules its own
+STOP at the same `duration_s` purely to retrieve that summary and write `test_N.csv`;
+the DUT timer is the authoritative stop.
 
 > **Note:** the arbiter host code is a teammate's, in a separate repo — this repo
 > owns only the DUT receiver. See [`arbiter/README.md`](../arbiter/README.md).

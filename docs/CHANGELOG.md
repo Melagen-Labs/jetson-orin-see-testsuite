@@ -13,6 +13,106 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 > reference. `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream
 > but unmodified and unbuilt; all other channels remain tentative.
 
+## 2026-08-01
+
+### SEE post-processing: offline dump triage tool + pull the per-board golden table
+
+- **`_pending_` — jetson/compute/cuda_particles/tools/see_dump_triage.py** (new)
+  - First actual post-processing code for the SEE state dumps (previously the
+    offline reconstruction existed only as a README concept). Stdlib-only CLI, runs
+    on a laptop against a pulled `arbiter_logs/compute/` tree. Per dumped epoch it:
+    re-hashes every dumped checkpoint (FNV-1a 64 over pos-then-vel bytes, exactly
+    `checksum.cpp::hashState`) against the board's golden table → **localises the
+    upset to the first divergent checkpoint** (a `dump_stride`-iteration window,
+    vs. detection's "somewhere this epoch"); scans NaN/Inf + max|pos| per checkpoint
+    → classifies the upset as `silent_bit_corruption` / `numeric_blowup` /
+    `out_of_bounds`; flags truncated/missing dumps and dump-less records. Human
+    report + `--json`. Verified on a synthetic dump (bit-flip at checkpoint 2 →
+    correctly reported first-divergence=2, window [100,150), silent corruption).
+  - **Documented limitation:** 1-vs-2+ upsets in one epoch (grouped SEEs) still
+    needs a reference-board replay (same build, bit-exact determinism); the dump +
+    golden + config carry everything that replay needs.
+- **`_pending_` — arbiter/pull_logs.sh**
+  - The golden table (`data/golden_hashes.txt`) is **per-board and git-ignored** —
+    it lived only in the repo tree on the DUT, so a pulled log tree could not be
+    post-processed off-board. Now best-effort rsyncs `golden_hashes.txt` **and** the
+    active `config/particles.json` into `${LOCAL_LOG_DIR}/compute/` (new
+    `DUT_REPO_DIR` env, default `/home/melagen/see-testsuite`), making the pulled
+    tree self-sufficient for `see_dump_triage.py`. Missing files never fail the run.
+- Paired coordinator change (live panel, teammate repo, `_pending_`):
+  `see_monitor.py` now surfaces `see_event` records as a **"Post-processing dump"**
+  line (`epoch N -> see_dumps/epoch_N_iter_M.bin`, or `NO dump saved`) and appends
+  the dump path to `sim_fault` lines — the operator sees in real time whether each
+  SEE has offline-analysis data. Live-panel-only key `see_dump_saved` (never in the
+  summary/CSV counts). Tests +3 (**62 total pass**).
+
+### §6a: test runs auto-last a configurable duration (default 100 s), DUT-owned timer
+
+- **`_pending_` — jetson/control/test_control.py**
+  - START_TEST now accepts an optional **`duration_s`** (default `default_duration_s`,
+    100). `validate()` rejects a non-positive / non-numeric / out-of-range value
+    (bool is rejected explicitly since it is an `int` subclass; cap `max_duration_s`
+    = 86400 s).
+  - **DUT owns the run timer** (robust to network blips): on START the receiver
+    (re)starts the channels, then a daemon `threading.Timer` fires after `duration_s`
+    and runs `auto_stop()` — the same work a manual STOP does (disarm ARMED,
+    `systemctl stop` each channel, `summarize_run()`, log an `auto_stop` control-log
+    record). A manual STOP_TEST still works and **cancels** the pending timer; a new
+    START **replaces** any timer still pending. `auto_stop()` guards against racing a
+    manual STOP via the `auto_stop_run_id` marker, so a stale callback is a no-op.
+    The START ack now echoes `duration_s`.
+  - The **summary/CSV path is unchanged**: the coordinator's STOP (manual or the
+    auto-STOP below) re-scans the persisted logs via `summarize_run()`, so it returns
+    the same summary whether or not the DUT's own timer already stopped the services
+    (`systemctl stop` is idempotent).
+- Paired coordinator change (teammate repo `melagen-test-coordinator`, `_pending_`):
+  - `coordinator/constants.py`: add `DEFAULT_DURATION_S` (100) and `MAX_DURATION_S`
+    (86400).
+  - `coordinator/request.py`: `TestRequest` gains a `duration_s` field;
+    `TestRequest.create(..., duration_s=DEFAULT_DURATION_S)` validates it positive and
+    within the cap (same rules as the DUT). It ships in the START payload.
+  - `coordinator/ui.py`: new **"Test Duration (s)"** entry (default 100, editable only
+    while IDLE, validated on Start). On START-accepted the GUI arms a **mirror
+    auto-STOP** via `master.after(duration_s*1000)` that reuses the normal STOP path
+    (no operator click) so it collects the summary/CSV and returns to IDLE; the DUT
+    timer remains the authoritative stop. Manual Stop / a new run cancels the mirror.
+    Status line and Start/Stop dialogs now show the duration.
+  - `receiver/test_receiver.py` (local mock DUT): `duration_s` added to
+    `START_REQUIRED_FIELDS` and validated, so the exact-field check accepts the new
+    payload for local GUI testing.
+  - Tests: +8 (`tests/test_request.py`, `tests/test_receiver.py`) covering duration
+    default/custom/reject cases. DUT `validate()` + timer schedule/cancel/replace
+    verified in isolation.
+
+### §6b: live SEE panel on the coordinator via log-tailing (no new DUT push)
+
+- Paired coordinator change (teammate repo `melagen-test-coordinator`, `_pending_`):
+  - New `coordinator/see_monitor.py`: `SeeLogTailer` tails the arbiter's local
+    `arbiter_logs/{compute,memory}/*.jsonl` mirror (the existing **radpull** rsync,
+    `arbiter/pull_logs.sh`) — **no network access in the coordinator**. Per-file byte
+    offsets mean each poll returns only NEW events (no re-printing); a shrunk file
+    (rotation) resets its offset; a partial trailing line is held back so a mid-append
+    record is never split. `classify_see()` maps each record to the stable
+    `SEE_TYPE_LABELS` keys **by field** (mirroring the DUT `summarize_run`, so the
+    live tally agrees with `test_N.csv`): anomalous final-checkpoint `checksum` →
+    `cuda_golden_mismatch`/`cuda_nonfinite`/`cuda_anomaly`; `sim_fault` →
+    `cuda_shutdown`; `mem_upset` → `gpu_mem_upset`; `status:error` → `fatal_error`.
+    Keying on the one-per-epoch checksum (not the paired `see_event` marker) counts
+    each epoch once while keeping the subtype.
+  - `coordinator/ui.py`: new **"Live SEEs"** panel that polls every **2.5 s**
+    (`SEE_POLL_MS`, interval stated in the panel header) via `master.after` and
+    appends new events as `ts  jetson_id  <label>  (detail)`. Reads from
+    `see_log_root` (default `./arbiter_logs`).
+  - `app_local_tcp.py`: `--see-log-root` flag (default `arbiter_logs`) points the
+    panel at the arbiter's mirror.
+  - `tests/test_see_monitor.py`: +11 tests (classify + tailer new-only / partial-line
+    / rotation / missing-root). **All 59 coordinator unit tests pass**; headless GUI
+    construction + live-poll smoke test passes.
+  - **Accepted caveat** (documented in `see_monitor.py`): near-real-time — latency =
+    the poll interval, and an SEE that crashes the board isn't flushed+pulled until
+    after reboot (reconstruct from pstore/boot logs then). Sub-second per-event pops
+    would need a DUT→arbiter UDP/TCP push instead.
+
 ## 2026-07-31
 
 ### coordinator: GUI can target a real DUT (--host); manual §4 uses it

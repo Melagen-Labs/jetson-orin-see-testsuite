@@ -13,8 +13,16 @@ Contract (arbiter -> DUT), one JSON object per TCP connection:
       "beam_energy_mev": 100,
       "shielding_material": "MLC1",
       "shielding_thickness_mm": 12,
+      "duration_s": 100,
       "sent_at_utc": "2026-07-31T15:00:00.000Z"
     }
+
+`duration_s` is optional (default `default_duration_s`, 100). The DUT owns the
+run timer -- robust to network blips: on START it (re)starts the channels, then a
+local threading.Timer auto-stops + summarizes them after `duration_s`, doing
+exactly what a manual STOP would (disarm, `systemctl stop`, summarize, log). A
+manual STOP_TEST still works and cancels the pending timer (whichever fires
+first). A new START cancels any timer still pending from a previous run.
 
 Reply (DUT -> arbiter), one JSON object + newline. The coordinator's GUI accepts
 a reply only when status == "ACCEPTED" (coordinator/ui.py::_validate_response) and
@@ -66,6 +74,8 @@ DEFAULTS = {
     # --- contract validation (must match the arbiter/teammate's sender) ------
     "protocol_version": 1,
     "supported_commands": ["START_TEST", "STOP_TEST"],
+    "default_duration_s": 100,         # DUT-owned run timer when START omits duration_s
+    "max_duration_s": 86400,           # sanity cap (24 h) on an operator-supplied duration
     "beam_energies_mev": [53, 100, 200],
     "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
     "shielding_thicknesses_mm": [8, 12, 16],
@@ -158,6 +168,14 @@ def validate(msg, cfg):
             errors.append("shielding_material must be one of %s" % cfg["shielding_materials"])
         if msg.get("shielding_thickness_mm") not in cfg["shielding_thicknesses_mm"]:
             errors.append("shielding_thickness_mm must be one of %s" % cfg["shielding_thicknesses_mm"])
+        # duration_s is optional (defaults to default_duration_s). If present it must
+        # be a positive number within the sanity cap. bool is an int subclass -> reject.
+        if "duration_s" in msg:
+            d = msg.get("duration_s")
+            if isinstance(d, bool) or not isinstance(d, (int, float)):
+                errors.append("duration_s must be a positive number")
+            elif not (0 < d <= cfg["max_duration_s"]):
+                errors.append("duration_s must be > 0 and <= %s" % cfg["max_duration_s"])
 
     return cmd, errors
 
@@ -358,6 +376,51 @@ def summarize_run(cfg, run_id):
     }
 
 
+# --- DUT-owned run timer ----------------------------------------------------
+
+def cancel_auto_stop(state, lock):
+    """Cancel a pending auto-stop timer, if any. Safe to call when none is armed."""
+    with lock:
+        timer = state.pop("auto_stop_timer", None)
+        state.pop("auto_stop_run_id", None)
+    if timer is not None:
+        timer.cancel()
+
+
+def auto_stop(cfg, run_id, state, lock):
+    """Timer callback: do exactly what a manual STOP does -- disarm + stop every
+    channel, summarize the run, and log it -- but without a reply (no peer). Guards
+    against racing a manual STOP that already cleared this timer for the same run."""
+    with lock:
+        # If a manual STOP (or a new START) already fired for this run, the timer
+        # entry is gone/replaced -> this callback is stale; do nothing.
+        if state.get("auto_stop_run_id") != run_id:
+            return
+        state.pop("auto_stop_timer", None)
+        state.pop("auto_stop_run_id", None)
+    results = do_stop(cfg)
+    all_ok = all(r["ok"] for r in results)
+    summary = None
+    try:
+        summary = summarize_run(cfg, run_id)
+    except Exception as exc:                    # noqa: BLE001 - reporting never fails the stop
+        summary = {"run_id": run_id, "error": "summary failed: %s" % exc}
+    log_control(cfg, {"event": "auto_stop", "run_id": run_id,
+                      "summary": summary, "channels": results, "ok": all_ok})
+
+
+def schedule_auto_stop(cfg, run_id, duration_s, state, lock):
+    """Arm the DUT-owned run timer: after `duration_s`, auto-stop this run. Replaces
+    any timer still pending from a previous START."""
+    cancel_auto_stop(state, lock)
+    timer = threading.Timer(duration_s, auto_stop, args=(cfg, run_id, state, lock))
+    timer.daemon = True
+    with lock:
+        state["auto_stop_timer"] = timer
+        state["auto_stop_run_id"] = run_id
+    timer.start()
+
+
 # --- request handling -------------------------------------------------------
 
 def handle_message(raw, cfg, state, lock):
@@ -393,13 +456,22 @@ def handle_message(raw, cfg, state, lock):
         meta, results = do_start(msg, cfg)
         all_ok = all(r["ok"] for r in results)
         detail = "started" if all_ok else "one or more channels failed to start"
+        # DUT owns the run timer: auto-stop after duration_s (default 100). Arm it
+        # even on a partial start so any channel that DID come up is cleaned up. A
+        # later STOP or START cancels/replaces this timer.
+        duration_s = msg.get("duration_s", cfg["default_duration_s"])
+        schedule_auto_stop(cfg, msg["request_id"], duration_s, state, lock)
         reply.update(status=STATUS_ACCEPTED if all_ok else STATUS_REJECTED,
-                     detail=detail, applied=meta, channels=results)
+                     detail=detail, applied=meta, channels=results,
+                     duration_s=duration_s)
         if not all_ok:
             reply["error"] = detail
         log_control(cfg, {"event": "start_test", "request_id": msg["request_id"],
-                          "applied": meta, "channels": results, "ok": all_ok})
+                          "applied": meta, "duration_s": duration_s,
+                          "channels": results, "ok": all_ok})
     else:  # STOP_TEST
+        # A manual STOP cancels the DUT-owned timer (whichever fires first wins).
+        cancel_auto_stop(state, lock)
         results = do_stop(cfg)
         all_ok = all(r["ok"] for r in results)
         detail = "stopped" if all_ok else "one or more channels failed to stop"
