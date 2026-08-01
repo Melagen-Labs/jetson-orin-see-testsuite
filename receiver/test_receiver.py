@@ -11,6 +11,7 @@ from typing import Any
 
 from coordinator.constants import (
     BEAM_ENERGIES_MEV,
+    MAX_DURATION_S,
     PROTOCOL_VERSION,
     SHIELDING_MATERIALS,
     SHIELDING_THICKNESSES_MM,
@@ -30,6 +31,7 @@ START_REQUIRED_FIELDS = {
     "beam_energy_mev",
     "shielding_material",
     "shielding_thickness_mm",
+    "duration_s",
     "sent_at_utc",
 }
 
@@ -171,6 +173,22 @@ def validate_start_request(
     if thickness not in SHIELDING_THICKNESSES_MM:
         raise RequestValidationError(
             f"Unsupported shielding thickness: {thickness}"
+        )
+
+    duration_s = payload["duration_s"]
+
+    # bool is an int subclass -> reject before the numeric range check.
+    if isinstance(duration_s, bool) or not isinstance(
+        duration_s, (int, float)
+    ):
+        raise RequestValidationError(
+            "duration_s must be a positive number"
+        )
+
+    if not 0 < duration_s <= MAX_DURATION_S:
+        raise RequestValidationError(
+            "duration_s must be greater than 0 and at most "
+            f"{MAX_DURATION_S}"
         )
 
 

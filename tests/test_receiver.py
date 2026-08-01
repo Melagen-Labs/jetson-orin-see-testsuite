@@ -75,6 +75,40 @@ class TestReceiverValidation(unittest.TestCase):
         ):
             validate_request_payload(payload)
 
+    def test_missing_duration_is_rejected(
+        self,
+    ) -> None:
+        request = TestRequest.create(
+            100,
+            "MLC1",
+            12,
+        )
+
+        payload = request.to_dict()
+        del payload["duration_s"]
+
+        with self.assertRaises(
+            RequestValidationError
+        ):
+            validate_request_payload(payload)
+
+    def test_non_positive_duration_is_rejected(
+        self,
+    ) -> None:
+        request = TestRequest.create(
+            100,
+            "MLC1",
+            12,
+        )
+
+        payload = request.to_dict()
+        payload["duration_s"] = 0
+
+        with self.assertRaises(
+            RequestValidationError
+        ):
+            validate_request_payload(payload)
+
     def test_unexpected_start_field_is_rejected(
         self,
     ) -> None:

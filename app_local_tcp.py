@@ -45,6 +45,15 @@ def main() -> None:
         default=5.0,
         help="Per-command timeout in seconds (default: 5.0).",
     )
+    parser.add_argument(
+        "--see-log-root",
+        default="arbiter_logs",
+        help=(
+            "Directory holding the arbiter's pulled DUT logs "
+            "(compute/ and memory/ JSONL, populated by pull_logs.sh). The live "
+            "SEE panel tails these. Default: ./arbiter_logs."
+        ),
+    )
     args = parser.parse_args()
 
     root = tk.Tk()
@@ -58,6 +67,7 @@ def main() -> None:
     TestCoordinatorApp(
         master=root,
         transport=transport,
+        see_log_root=args.see_log_root,
     )
 
     root.mainloop()

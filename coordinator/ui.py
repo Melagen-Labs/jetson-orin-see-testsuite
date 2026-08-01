@@ -13,6 +13,8 @@ from typing import Any
 
 from coordinator.constants import (
     BEAM_ENERGIES_MEV,
+    DEFAULT_DURATION_S,
+    MAX_DURATION_S,
     SHIELDING_MATERIALS,
     SHIELDING_THICKNESSES_MM,
 )
@@ -21,6 +23,7 @@ from coordinator.request import (
     StopTestRequest,
     TestRequest,
 )
+from coordinator.see_monitor import SeeLogTailer
 from coordinator.transport import (
     MockTransport,
     Transport,
@@ -39,7 +42,17 @@ SEE_TYPE_LABELS = {
     "gpu_mem_upset": "GPU RAM tester: bit upset",
     "mem_tester_restart": "GPU RAM tester: shut down / restarted",
     "fatal_error": "Fatal error record",
+    # Live-panel-only marker (never appears in the DUT summary/CSV): whether the
+    # SEE's epoch state dump (post-processing data for see_dump_triage.py) was saved.
+    "see_dump_saved": "Post-processing dump",
 }
+
+# Live SEE panel (§6b): tail the pulled arbiter_logs/ tree every SEE_POLL_MS and
+# append new SEE events. Near-real-time -- latency is the poll interval; this is the
+# accepted tradeoff of log-tailing over a per-event push (see see_monitor.py).
+SEE_POLL_MS = 2500
+SEE_POLL_SECONDS = SEE_POLL_MS / 1000
+DEFAULT_SEE_LOG_ROOT = "arbiter_logs"
 
 
 class CoordinatorState(Enum):
@@ -59,11 +72,22 @@ class TestCoordinatorApp(ttk.Frame):
         master: tk.Tk,
         transport: Transport | None = None,
         event_logger: EventLogger | None = None,
+        see_log_root: str | Path | None = None,
     ) -> None:
         super().__init__(master, padding=20)
 
         self.master = master
         self.transport = transport or MockTransport()
+
+        # §6b live SEE panel: tail the local arbiter_logs/ mirror (populated by the
+        # arbiter's radpull rsync). No network access here -- just file tailing.
+        self._see_log_root = Path(
+            see_log_root
+            if see_log_root is not None
+            else DEFAULT_SEE_LOG_ROOT
+        )
+        self._see_tailer = SeeLogTailer(self._see_log_root)
+        self._see_after_id: str | None = None
 
         self.transport_mode = getattr(
             self.transport,
@@ -104,7 +128,13 @@ class TestCoordinatorApp(ttk.Frame):
         self.energy_var = tk.StringVar(value="100")
         self.material_var = tk.StringVar(value="MLC1")
         self.thickness_var = tk.StringVar(value="12")
+        self.duration_var = tk.StringVar(value=str(DEFAULT_DURATION_S))
         self.summary_var = tk.StringVar()
+
+        # Pending "after" id for the coordinator-side auto-STOP timer. The DUT owns
+        # the authoritative run timer; this mirror fires at the same duration so the
+        # GUI retrieves the summary/CSV and returns to IDLE without an operator click.
+        self._auto_stop_after_id: str | None = None
 
         self.status_var = tk.StringVar(
             value=(
@@ -139,14 +169,24 @@ class TestCoordinatorApp(ttk.Frame):
             ),
         )
 
+        self._append_see(
+            "Watching "
+            f"{self._see_log_root} for SEE events "
+            f"(every {SEE_POLL_SECONDS:g}s)..."
+        )
+        self._see_after_id = self.master.after(
+            SEE_POLL_MS,
+            self._poll_sees,
+        )
+
     def _configure_window(self) -> None:
         """Configure the main application window."""
 
         self.master.title(
             "Jetson Proton Test Coordinator"
         )
-        self.master.geometry("720x660")
-        self.master.minsize(650, 600)
+        self.master.geometry("720x860")
+        self.master.minsize(650, 780)
 
         self.master.columnconfigure(0, weight=1)
         self.master.rowconfigure(0, weight=1)
@@ -158,7 +198,9 @@ class TestCoordinatorApp(ttk.Frame):
         )
 
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(8, weight=1)
+        # Activity log (row 9) and the live SEE panel (row 11) both expand.
+        self.rowconfigure(9, weight=1)
+        self.rowconfigure(11, weight=1)
 
     def _build_widgets(self) -> None:
         """Create and position interface controls."""
@@ -258,13 +300,36 @@ class TestCoordinatorApp(ttk.Frame):
             pady=6,
         )
 
+        ttk.Label(
+            self,
+            text="Test Duration (s):",
+        ).grid(
+            row=4,
+            column=0,
+            sticky="w",
+            padx=(0, 15),
+            pady=6,
+        )
+
+        self.duration_entry = ttk.Entry(
+            self,
+            textvariable=self.duration_var,
+            width=27,
+        )
+        self.duration_entry.grid(
+            row=4,
+            column=1,
+            sticky="ew",
+            pady=6,
+        )
+
         summary_frame = ttk.LabelFrame(
             self,
             text="Selected Configuration",
             padding=12,
         )
         summary_frame.grid(
-            row=4,
+            row=5,
             column=0,
             columnspan=2,
             sticky="ew",
@@ -287,7 +352,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         button_frame = ttk.Frame(self)
         button_frame.grid(
-            row=5,
+            row=6,
             column=0,
             columnspan=2,
             pady=12,
@@ -319,7 +384,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         status_frame = ttk.Frame(self)
         status_frame.grid(
-            row=6,
+            row=7,
             column=0,
             columnspan=2,
             sticky="ew",
@@ -355,7 +420,7 @@ class TestCoordinatorApp(ttk.Frame):
             text="Activity Log",
             font=("Segoe UI", 10, "bold"),
         ).grid(
-            row=7,
+            row=8,
             column=0,
             columnspan=2,
             sticky="w",
@@ -364,7 +429,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         log_frame = ttk.Frame(self)
         log_frame.grid(
-            row=8,
+            row=9,
             column=0,
             columnspan=2,
             sticky="nsew",
@@ -404,6 +469,59 @@ class TestCoordinatorApp(ttk.Frame):
 
         self.activity_log.configure(
             yscrollcommand=scrollbar.set
+        )
+
+        ttk.Label(
+            self,
+            text=(
+                "Live SEEs  (near-real-time, polling every "
+                f"{SEE_POLL_SECONDS:g}s from {self._see_log_root})"
+            ),
+            font=("Segoe UI", 10, "bold"),
+        ).grid(
+            row=10,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(10, 5),
+        )
+
+        see_frame = ttk.Frame(self)
+        see_frame.grid(
+            row=11,
+            column=0,
+            columnspan=2,
+            sticky="nsew",
+        )
+        see_frame.columnconfigure(0, weight=1)
+        see_frame.rowconfigure(0, weight=1)
+
+        self.see_log = tk.Text(
+            see_frame,
+            height=8,
+            wrap="none",
+            state="disabled",
+            font=("Consolas", 9),
+        )
+        self.see_log.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+        )
+
+        see_scrollbar = ttk.Scrollbar(
+            see_frame,
+            orient="vertical",
+            command=self.see_log.yview,
+        )
+        see_scrollbar.grid(
+            row=0,
+            column=1,
+            sticky="ns",
+        )
+
+        self.see_log.configure(
+            yscrollcommand=see_scrollbar.set
         )
 
         self._selection_widgets = (
@@ -458,6 +576,8 @@ class TestCoordinatorApp(ttk.Frame):
                 widget.configure(
                     state="readonly"
                 )
+            # A free-text entry, not a dropdown -> editable (not "readonly") at idle.
+            self.duration_entry.configure(state="normal")
 
         elif (
             self.coordinator_state
@@ -474,6 +594,7 @@ class TestCoordinatorApp(ttk.Frame):
                 widget.configure(
                     state="disabled"
                 )
+            self.duration_entry.configure(state="disabled")
 
         else:
             self.start_button.configure(
@@ -487,6 +608,7 @@ class TestCoordinatorApp(ttk.Frame):
                 widget.configure(
                     state="disabled"
                 )
+            self.duration_entry.configure(state="disabled")
 
     def _validate_response(
         self,
@@ -683,6 +805,38 @@ class TestCoordinatorApp(ttk.Frame):
             )
             return False
 
+    def _schedule_auto_stop(self, duration_s: int) -> None:
+        """Arm the coordinator-side auto-STOP timer for `duration_s` seconds."""
+
+        self._cancel_auto_stop()
+        delay_ms = max(0, int(duration_s * 1000))
+        self._auto_stop_after_id = self.master.after(
+            delay_ms,
+            self._auto_stop_fire,
+        )
+
+    def _cancel_auto_stop(self) -> None:
+        """Cancel a pending auto-STOP timer, if one is armed."""
+
+        if self._auto_stop_after_id is not None:
+            try:
+                self.master.after_cancel(
+                    self._auto_stop_after_id
+                )
+            except tk.TclError:
+                pass
+            self._auto_stop_after_id = None
+
+    def _auto_stop_fire(self) -> None:
+        """Duration elapsed: run the normal STOP path without an operator click."""
+
+        self._auto_stop_after_id = None
+        if (
+            self.coordinator_state
+            == CoordinatorState.ACTIVE
+        ):
+            self._on_stop_test(automatic=True)
+
     def _on_start_test(self) -> None:
         """Validate, confirm, log and send START_TEST."""
 
@@ -704,11 +858,15 @@ class TestCoordinatorApp(ttk.Frame):
             thickness = int(
                 self.thickness_var.get()
             )
+            duration_s = int(
+                self.duration_var.get().strip()
+            )
 
             request = TestRequest.create(
                 beam_energy_mev=beam_energy,
                 shielding_material=material,
                 shielding_thickness_mm=thickness,
+                duration_s=duration_s,
             )
 
         except (TypeError, ValueError) as error:
@@ -739,7 +897,9 @@ class TestCoordinatorApp(ttk.Frame):
             f"Shielding material: "
             f"{request.shielding_material}\n"
             f"Shielding thickness: "
-            f"{request.shielding_thickness_mm} mm\n\n"
+            f"{request.shielding_thickness_mm} mm\n"
+            f"Test duration: "
+            f"{request.duration_s} s\n\n"
             f"Transport: "
             f"{self.transport_mode.upper()}\n\n"
             "Send this command?"
@@ -824,6 +984,12 @@ class TestCoordinatorApp(ttk.Frame):
                 CoordinatorState.ACTIVE
             )
 
+            # Mirror the DUT-owned run timer: auto-send STOP after duration_s so the
+            # GUI collects the summary/CSV and returns to IDLE on its own. The DUT
+            # is still the authoritative stop (robust to network blips); this is a
+            # convenience that reuses the normal STOP path.
+            self._schedule_auto_stop(request.duration_s)
+
             self._record_event(
                 "START_TEST_ACCEPTED",
                 transport=self.transport_mode,
@@ -833,14 +999,18 @@ class TestCoordinatorApp(ttk.Frame):
 
             self.status_var.set(
                 "Test active - "
-                f"{request.request_id[:8]}"
+                f"{request.request_id[:8]} "
+                f"(auto-stop in {request.duration_s}s)"
             )
 
             messagebox.showinfo(
                 "Start Accepted",
                 "START_TEST was accepted.\n\n"
                 f"Request ID: "
-                f"{request.request_id}",
+                f"{request.request_id}\n\n"
+                f"The test will auto-stop after "
+                f"{request.duration_s} s "
+                "(or press Stop Test).",
                 parent=self.master,
             )
 
@@ -871,8 +1041,9 @@ class TestCoordinatorApp(ttk.Frame):
                 parent=self.master,
             )
 
-    def _on_stop_test(self) -> None:
-        """Confirm, log and send STOP_TEST."""
+    def _on_stop_test(self, automatic: bool = False) -> None:
+        """Confirm, log and send STOP_TEST. When `automatic` (fired by the duration
+        timer) the confirmation dialog is skipped."""
 
         if (
             self.coordinator_state
@@ -883,6 +1054,16 @@ class TestCoordinatorApp(ttk.Frame):
                 "there is no active test."
             )
             return
+
+        # A manual stop pre-empts the pending auto-stop timer; an automatic stop has
+        # already cleared it. Either way, ensure no stale timer fires later.
+        self._cancel_auto_stop()
+
+        if automatic:
+            self._append_log(
+                "Auto-stop: test duration elapsed; "
+                "sending STOP_TEST."
+            )
 
         if self.active_test_request_id is None:
             self._append_log(
@@ -915,10 +1096,14 @@ class TestCoordinatorApp(ttk.Frame):
             "Send the stop command?"
         )
 
-        confirmed = messagebox.askyesno(
-            "Confirm Stop Test",
-            confirmation_message,
-            parent=self.master,
+        confirmed = (
+            True
+            if automatic
+            else messagebox.askyesno(
+                "Confirm Stop Test",
+                confirmation_message,
+                parent=self.master,
+            )
         )
 
         if not confirmed:
@@ -1109,6 +1294,51 @@ class TestCoordinatorApp(ttk.Frame):
         self.activity_log.configure(
             state="disabled"
         )
+
+    def _append_see(
+        self,
+        message: str,
+    ) -> None:
+        """Append one line to the live SEE panel."""
+
+        timestamp = datetime.now().strftime(
+            "%H:%M:%S"
+        )
+
+        self.see_log.configure(state="normal")
+        self.see_log.insert(
+            "end",
+            f"[{timestamp}] {message}\n",
+        )
+        self.see_log.see("end")
+        self.see_log.configure(state="disabled")
+
+    def _poll_sees(self) -> None:
+        """Tail the arbiter_logs/ mirror and append any new SEE events. Reschedules
+        itself every SEE_POLL_MS. Never raises into the Tk loop."""
+
+        try:
+            for event in self._see_tailer.poll():
+                label = SEE_TYPE_LABELS.get(
+                    event["type_key"],
+                    event["type_key"],
+                )
+                detail = event.get("detail")
+                suffix = f"  ({detail})" if detail else ""
+                self._append_see(
+                    f"{event.get('ts', '')}  "
+                    f"{event.get('jetson_id', '?')}  "
+                    f"{label}{suffix}"
+                )
+        except Exception as error:  # noqa: BLE001 - never kill the poll loop
+            self._append_see(
+                f"[SEE tail error: {error}]"
+            )
+        finally:
+            self._see_after_id = self.master.after(
+                SEE_POLL_MS,
+                self._poll_sees,
+            )
 
 
 def run() -> None:

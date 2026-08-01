@@ -59,6 +59,65 @@ class TestStartTestRequest(unittest.TestCase):
             8,
         )
 
+    def test_default_duration_is_100(self) -> None:
+        request = TestRequest.create(
+            100,
+            "MLC1",
+            12,
+        )
+
+        self.assertEqual(request.duration_s, 100)
+        self.assertEqual(
+            json.loads(request.to_json())["duration_s"],
+            100,
+        )
+
+    def test_custom_duration_is_carried(self) -> None:
+        request = TestRequest.create(
+            100,
+            "MLC1",
+            12,
+            duration_s=250,
+        )
+
+        self.assertEqual(request.duration_s, 250)
+
+    def test_zero_duration_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            TestRequest.create(
+                100,
+                "MLC1",
+                12,
+                duration_s=0,
+            )
+
+    def test_negative_duration_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            TestRequest.create(
+                100,
+                "MLC1",
+                12,
+                duration_s=-5,
+            )
+
+    def test_non_numeric_duration_is_rejected(self) -> None:
+        with self.assertRaises(TypeError):
+            TestRequest.create(
+                100,
+                "MLC1",
+                12,
+                duration_s="100",
+            )
+
+    def test_boolean_duration_is_rejected(self) -> None:
+        with self.assertRaises(TypeError):
+            TestRequest.create(
+                100,
+                "MLC1",
+                12,
+                duration_s=True,
+            )
+
     def test_invalid_energy_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(

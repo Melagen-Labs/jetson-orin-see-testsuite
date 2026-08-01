@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from coordinator.constants import (
     BEAM_ENERGIES_MEV,
+    DEFAULT_DURATION_S,
+    MAX_DURATION_S,
     PROTOCOL_VERSION,
     SHIELDING_MATERIALS,
     SHIELDING_THICKNESSES_MM,
@@ -37,6 +39,7 @@ class TestRequest:
     beam_energy_mev: int
     shielding_material: str
     shielding_thickness_mm: int
+    duration_s: int
     sent_at_utc: str
 
     @classmethod
@@ -45,6 +48,7 @@ class TestRequest:
         beam_energy_mev: int,
         shielding_material: str,
         shielding_thickness_mm: int,
+        duration_s: int = DEFAULT_DURATION_S,
     ) -> "TestRequest":
         """Validate selections and create a START_TEST request."""
 
@@ -87,6 +91,21 @@ class TestRequest:
                 f"{SHIELDING_THICKNESSES_MM}"
             )
 
+        # duration_s: bool is an int subclass, so reject it explicitly before the
+        # numeric range check (the DUT applies the same rule).
+        if isinstance(duration_s, bool) or not isinstance(
+            duration_s, (int, float)
+        ):
+            raise TypeError(
+                "duration_s must be a positive number"
+            )
+
+        if not 0 < duration_s <= MAX_DURATION_S:
+            raise ValueError(
+                "duration_s must be greater than 0 and at most "
+                f"{MAX_DURATION_S}"
+            )
+
         return cls(
             protocol_version=PROTOCOL_VERSION,
             command=START_TEST_COMMAND,
@@ -94,6 +113,7 @@ class TestRequest:
             beam_energy_mev=beam_energy_mev,
             shielding_material=shielding_material,
             shielding_thickness_mm=shielding_thickness_mm,
+            duration_s=duration_s,
             sent_at_utc=utc_timestamp(),
         )
 
