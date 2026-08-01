@@ -21,7 +21,7 @@ Requested by the team: *"only send whether or not an SEE was detected (less data
 then send the full post processing data at the end — I don't want to send over
 heavy workload mid test."*
 
-- **`_pending_` — arbiter/pull_logs.sh**
+- **`cd55ef6` — arbiter/pull_logs.sh**
   - New **`PULL_MODE`** env (default **`live`**). In `live` the periodic pull moves
     **only the structured JSONL event logs** — every SEE is still fully *reported*
     there (`see_event` / anomalous `checksum` / `mem_upset`, a few hundred bytes
@@ -37,7 +37,7 @@ heavy workload mid test."*
     bash pull_logs.sh`.
   - Verified both paths (live early-exits with JSONL only, exit 0; full attempts
     sidecars + pstore) and that a failed pull still exits 0 and never blocks.
-- **`_pending_` — arbiter/arbiter_main.py**
+- **`cd55ef6` — arbiter/arbiter_main.py**
   - `--pull-mode {live,full}` (default `live`) for the periodic pull; the mode is
     passed through to the script and recorded on every `PULL` correlator record.
   - **Automatic end-of-run `full` pull on shutdown** (after the pull thread stops,
