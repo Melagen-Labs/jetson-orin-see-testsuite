@@ -15,6 +15,23 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### arbiter: pull_logs.sh runs on a Windows arbiter (scp fallback when rsync absent)
+
+- **`777bcb3` — arbiter/pull_logs.sh**
+  - The canonical log puller was rsync-only, but the campaign arbiter is Windows,
+    which has no rsync. It now auto-detects rsync and falls back to `scp` (ships with
+    Windows OpenSSH — no install needed). Same env-var interface; identical behavior
+    where rsync exists; `FORCE_SCP=1` forces scp. Live mode scp-copies only `*.jsonl`
+    (skipping the heavy `see_dumps`, matching the rsync excludes); full mode copies
+    dir *contents* (`/*`, to avoid scp's copy-dir-into-dir double-nesting). The
+    completion line now reports the backend used.
+  - **Verified on the Windows arbiter against orin-nano-01 over the direct cable:**
+    live + full pulls both fetch the JSONL correctly into a flat tree, `[backend: scp]`.
+  - **Known limitation (pre-existing, not this change):** the full-mode sidecars
+    (`golden_hashes.txt`, `particles.json`) live under melagen's home dir, which the
+    low-privilege `radpull` user can't read — fetch those out-of-band or relax perms
+    for offline `see_dump_triage.py`.
+
 ### setup-board.sh: warn on missing /var/log/radtest log tree; header clarity
 
 - **`246d8d2` — scripts/setup-board.sh**
