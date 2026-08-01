@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### compute + memory: concise "SEE Detected" operator line during a run
 
-- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp, jetson/memory/mem_check.py**
+- **`89f6f41` — jetson/compute/cuda_particles/particles_main.cpp, jetson/memory/mem_check.py**
   - Both deployed detectors now print a **one-line human-readable `SEE Detected`
     summary to the journal** (systemd `StandardError`) at each detection, so an
     operator watching `journalctl -f` sees each event live without parsing JSONL.
@@ -38,7 +38,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Fix: heartbeat + boot-state services never installed on a scripted board
 
-- **`_pending_` — jetson/heartbeat/heartbeat_sender.service, jetson/boot_state/boot_state_logger.service, jetson/boot_state/boot_state_logger-boot.service, scripts/setup-board.sh, scripts/fleet.sh, docs/SERVICES.md, docs/FLASH_AND_BRINGUP.md, docs/DEPLOYMENT.md, jetson/systemd/README.md, README.md**
+- **`89f6f41` — jetson/heartbeat/heartbeat_sender.service, jetson/boot_state/boot_state_logger.service, jetson/boot_state/boot_state_logger-boot.service, scripts/setup-board.sh, scripts/fleet.sh, docs/SERVICES.md, docs/FLASH_AND_BRINGUP.md, docs/DEPLOYMENT.md, jetson/systemd/README.md, README.md**
   - **Root cause:** these three units still carried the legacy `/opt/radtest/...`
     deploy path (in both `ExecStart` and `Documentation=`), but the fleet actually
     runs from the git clone at `/home/melagen/see-testsuite` — the path the proven
