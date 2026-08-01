@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Fault injection: induce every compute SEE type on demand (no beam) — verified on hardware
 
-- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp**
+- **`549a37f` — jetson/compute/cuda_particles/particles_main.cpp**
   - New **TEST-ONLY `--inject {bitflip,nan,oob}`** flag (+ `--inject-at`,
     `--inject-bit`, `--inject-index`), default off. Fires once at `--inject-at`,
     corrupting one float of the **device** particle buffer so the fault propagates
@@ -33,7 +33,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
     correct (`bitflip`→mismatch, `nan`→`finite:false`). `see_dump_triage.py` on a real
     injected dump **localized the `oob` hit to steps [450,500)** — the exact 50-step
     window of the iter-500 injection — and classified it `out_of_bounds`.
-- **`_pending_` — jetson/compute/cuda_particles/README.md**
+- **`549a37f` — jetson/compute/cuda_particles/README.md**
   - New "Inducing SEEs without a beam" section: the `--inject` table + verified
     commands, random-placement via `--inject-index`/`--inject-bit`, the
     `systemctl kill` path for shutdown/restart types, golden-corruption to flag every
