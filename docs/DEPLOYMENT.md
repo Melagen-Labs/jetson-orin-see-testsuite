@@ -62,15 +62,19 @@ From a dev machine with passwordless SSH to the boards:
 ```bash
 scripts/fleet.sh status     # git HEAD + service state on every board
 scripts/fleet.sh build      # git pull + rebuild cuda_particles on every board
-scripts/fleet.sh restart    # restart both services on every board
+scripts/fleet.sh restart    # restart the deployed services on every board
 ```
 Override the board list with `HOSTS="orin-nano-01 orin-nano-03" scripts/fleet.sh ...`.
 
 ## Services and arming
 
-Install and arm per `docs/SERVICES.md`. Services should point at the clone paths
-(`~/see-testsuite/...`); adjust each unit's `WorkingDirectory`/`ExecStart`/
-`ConditionPathExists` accordingly, then `touch ~/see-testsuite/.../ARMED` once.
+`setup-board.sh` installs and enables all **five** deployed units — the two
+ARMED-gated workloads (`cuda_particles`, `mem_check_gpu`) plus the three always-on
+monitors (`test_control`, `heartbeat_sender`, and `boot_state_logger` ×2) — and
+`touch`es the ARMED flag for the workloads. Every unit already points at the clone
+paths (`/home/melagen/see-testsuite/...`), so there is no per-unit path editing.
+See `docs/SERVICES.md` for the per-service install, the ARMED model (which gates the
+workloads only — the monitors always run), and the manual equivalent.
 
 ## Freezing for the campaign
 

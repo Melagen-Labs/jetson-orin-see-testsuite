@@ -25,6 +25,12 @@ CUDA_BIN="/usr/local/cuda/bin"                       # JetPack CUDA toolchain (n
 COMPUTE="${REPO}/jetson/compute/cuda_particles"      # GPU compute channel dir
 MEMORY="${REPO}/jetson/memory"                        # memory channel dir (GPU DRAM tester, 2b)
 CONTROL="${REPO}/jetson/control"                      # arbiter test-control receiver dir
+HEARTBEAT="${REPO}/jetson/heartbeat"                  # 1 Hz UDP heartbeat sender dir (channel 3b)
+BOOT="${REPO}/jetson/boot_state"                       # boot-state uptime/boot-event logger dir (channel 4)
+
+# Arbiter IP the heartbeat sender targets on the beam-line ethernet segment.
+# Overridable per board without editing the unit:  ARBITER_IP=x.x.x.x ./setup-board.sh 03
+ARBITER_IP="${ARBITER_IP:-192.168.1.10}"
 
 # ---- 1. identity -----------------------------------------------------------
 # A clone is a byte-for-byte copy of the master, so it inherits three things that
@@ -95,18 +101,37 @@ touch "${COMPUTE}/ARMED" "${MEMORY}/ARMED"
 
 # ---- 7. services -----------------------------------------------------------
 # Install the unit files, reload systemd, and enable+start the DEPLOYED channels:
-# compute (cuda_particles), GPU memory (mem_check_gpu), and the arbiter
-# test-control receiver (test_control, runs as root). The CPU memory unit is
-# intentionally not installed. The channels are gated by their ARMED flag (armed
-# in step 6); the control receiver is not gated -- it must always listen so it can
-# act on the arbiter's start/stop command (docs/CONTROL_INTERFACE.md).
+# compute (cuda_particles), GPU memory (mem_check_gpu), the arbiter test-control
+# receiver (test_control, runs as root), the 1 Hz heartbeat sender (heartbeat,
+# channel 3b), and the boot-state loggers (boot_state, channel 4: one long-running
+# uptime loop + one oneshot boot-event record). The CPU memory unit is intentionally
+# not installed. The compute/memory channels are gated by their ARMED flag (armed in
+# step 6); the control receiver, heartbeat, and boot-state loggers are NOT gated --
+# the heartbeat and boot-state evidence must flow on every boot so the arbiter can
+# tell a hung/latched/rebooted board from a healthy one (docs/CONTROL_INTERFACE.md).
+#
+# The boot-state loggers run as root and write to /var/log/radtest/boot_state, which
+# is created (with the melagen:radlog / mode-2750 ownership the arbiter's radpull
+# reader needs) by the one-time operator step in docs/FLASH_AND_BRINGUP.md 1b. The
+# logger also self-creates the dir via os.makedirs() if missing, so a fresh board
+# still logs even before that step -- just re-run the operator chown afterward.
 echo "[7/7] install + start services"
-sudo cp "${COMPUTE}/cuda_particles.service" /etc/systemd/system/cuda_particles.service
-sudo cp "${MEMORY}/mem_check_gpu.service"   /etc/systemd/system/mem_check_gpu.service
-sudo cp "${CONTROL}/test_control.service"   /etc/systemd/system/test_control.service
+sudo cp "${COMPUTE}/cuda_particles.service"        /etc/systemd/system/cuda_particles.service
+sudo cp "${MEMORY}/mem_check_gpu.service"          /etc/systemd/system/mem_check_gpu.service
+sudo cp "${CONTROL}/test_control.service"          /etc/systemd/system/test_control.service
+sudo cp "${HEARTBEAT}/heartbeat_sender.service"    /etc/systemd/system/heartbeat_sender.service
+sudo cp "${BOOT}/boot_state_logger.service"        /etc/systemd/system/boot_state_logger.service
+sudo cp "${BOOT}/boot_state_logger-boot.service"   /etc/systemd/system/boot_state_logger-boot.service
+# Point the heartbeat at this campaign's arbiter (default 192.168.1.10; override
+# with ARBITER_IP=...). Patches the INSTALLED copy only, leaving the repo unit at
+# its documented default.
+sudo sed -i "s#--arbiter-ip [0-9.]\+#--arbiter-ip ${ARBITER_IP}#" /etc/systemd/system/heartbeat_sender.service
 sudo systemctl daemon-reload                         # re-read unit files
-sudo systemctl enable --now cuda_particles.service mem_check_gpu.service test_control.service
+sudo systemctl enable --now cuda_particles.service mem_check_gpu.service test_control.service \
+                            heartbeat_sender.service boot_state_logger.service boot_state_logger-boot.service
 
 echo "done -- status:"
-systemctl status cuda_particles.service mem_check_gpu.service test_control.service --no-pager || true
+systemctl status cuda_particles.service mem_check_gpu.service test_control.service \
+                 heartbeat_sender.service boot_state_logger.service boot_state_logger-boot.service \
+                 --no-pager || true
 echo "NOTE: log out and back in for the new hostname to appear in your shell prompt."

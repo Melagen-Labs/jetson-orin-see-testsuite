@@ -355,6 +355,7 @@ int main(int argc, char **argv)
         psystem.reset(ParticleSystem::CONFIG_GRID);
         unsigned int capturedCk = 0;   // checkpoints buffered this epoch
         bool epochAnomaly = false;     // final checksum mismatch/NaN/oob -> one SEE
+        const char *seeType = "none";  // SEE subtype for the operator "SEE Detected" line
         char hbuf[24] = "0", gbuf[24] = "0";  // final hash / golden (for see_event)
 
         for (unsigned int step = 1; step <= E && !g_stop; step++) {
@@ -449,6 +450,17 @@ int main(int argc, char **argv)
                            << metaFields(cfg) << "}";
                         log.writeLine(os.str());
                     }
+                    {   // Operator-facing one-liner to the journal (StandardError).
+                        const char *synth = (injected || chaos) ? " [SYNTHETIC]" : "";
+                        std::string dumpMsg = dumpRel.empty()
+                            ? std::string("post-processing dump NOT saved")
+                            : ("post-processing dump saved -> " + dumpRel);
+                        fprintf(stderr,
+                                "[cuda_particles] SEE Detected: sim_fault (%s)%s | epoch %llu iter %llu | %s\n",
+                                cudaGetErrorString(ce), synth,
+                                (unsigned long long)epoch, (unsigned long long)totalIter,
+                                dumpMsg.c_str());
+                    }
                     remove(runFlag.c_str());   // we logged it -> clean exit for restart
                     return 2;
                 }
@@ -475,7 +487,14 @@ int main(int argc, char **argv)
                         uint64_t gh   = golden.back();
                         bool mismatch = (h != gh);
                         bool anomaly  = mismatch || !fin || (mAbs > 2.0f);
-                        if (anomaly) { corruptionSeen = 1; epochAnomaly = true; }
+                        if (anomaly) {
+                            corruptionSeen = 1; epochAnomaly = true;
+                            // Classify for the "SEE Detected" line: NaN/Inf first,
+                            // then out-of-bounds magnitude, else a bit-level hash
+                            // mismatch against the golden table.
+                            seeType = !fin ? "nonfinite"
+                                    : (mAbs > 2.0f ? "out_of_bounds" : "golden_mismatch");
+                        }
                         snprintf(hbuf, sizeof(hbuf), "%016llx", (unsigned long long)h);
                         snprintf(gbuf, sizeof(gbuf), "%016llx", (unsigned long long)gh);
                         if (log.isOpen()) {
@@ -532,6 +551,17 @@ int main(int argc, char **argv)
                    << "\"floats_per_checkpoint\":" << (unsigned long long)(2 * count) << ","
                    << metaFields(cfg) << "}";
                 log.writeLine(os.str());
+            }
+            {   // Operator-facing one-liner to the journal (StandardError).
+                const char *synth = (injected || chaos) ? " [SYNTHETIC]" : "";
+                std::string dumpMsg = dumpRel.empty()
+                    ? std::string("post-processing dump NOT saved")
+                    : ("post-processing dump saved -> " + dumpRel);
+                fprintf(stderr,
+                        "[cuda_particles] SEE Detected: %s%s | epoch %llu iter %llu | %s\n",
+                        seeType, synth,
+                        (unsigned long long)epoch, (unsigned long long)totalIter,
+                        dumpMsg.c_str());
             }
             writeHeartbeat(cfg.heartbeat_path, totalIter, epoch, E, seeEvents);
         }

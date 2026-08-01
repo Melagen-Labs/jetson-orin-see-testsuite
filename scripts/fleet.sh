@@ -40,11 +40,14 @@ case "$CMD" in
          cmake --build jetson/compute/cuda_particles/build -j"
     ;;
   restart)
-    run "sudo systemctl restart cuda_particles mem_check 2>&1 || true"
+    # Deployed long-running units. mem_check_gpu (2b), NOT mem_check (2a CPU, not
+    # deployed). boot_state_logger-boot is a oneshot -- restarting it would append a
+    # spurious boot record, so it is intentionally excluded here.
+    run "sudo systemctl restart cuda_particles mem_check_gpu test_control heartbeat_sender boot_state_logger 2>&1 || true"
     ;;
   status)
     run "cd $REPO_DIR && git rev-parse --short HEAD && \
-         systemctl is-active cuda_particles mem_check 2>/dev/null || true"
+         systemctl is-active cuda_particles mem_check_gpu test_control heartbeat_sender boot_state_logger boot_state_logger-boot 2>/dev/null || true"
     ;;
   *)
     echo "usage: $0 {pull|build|restart|status}   (HOSTS=... to override board list)" >&2
