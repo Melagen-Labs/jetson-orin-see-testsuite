@@ -25,8 +25,26 @@
 #   perms on /sys/fs/pstore. Otherwise pull pstore in a separate root-authorized
 #   step. The pstore rsync below is best-effort and won't fail the run.
 #
+# ---- Pull modes: keep the DUT light DURING a run ----------------------------
+#   PULL_MODE=live (default) -- the periodic in-run pull. Transfers ONLY the
+#     structured JSONL event logs: every SEE is already fully *reported* there
+#     (see_event / checksum / mem_upset records, a few hundred bytes each), which
+#     is exactly what the coordinator's live SEE panel tails. Explicitly EXCLUDES
+#     see_dumps/ -- each SEE state dump is ~10 MB (dump_checkpoints x
+#     floats_per_checkpoint x 4 B) and is post-processing data, not something the
+#     operator needs mid-beam. Also skips pstore + the golden/config sidecars.
+#     Net effect: a live pull moves ~kB and costs the DUT almost no CPU, so the
+#     workload under test isn't perturbed by log traffic.
+#   PULL_MODE=full -- the end-of-run pull. Everything: the dumps, pstore records,
+#     and the per-board golden table + particles.json that see_dump_triage.py
+#     needs. Run this ONCE after a test finishes (beam off), e.g.
+#         PULL_MODE=full bash pull_logs.sh
+#     arbiter_main.py also fires one automatically when it shuts down.
+#
 # ---- Configuration (environment variables, with defaults) -------------------
 set -euo pipefail
+
+PULL_MODE="${PULL_MODE:-live}"
 
 DUT_HOST="${DUT_HOST:-192.168.1.20}"
 DUT_USER="${DUT_USER:-radpull}"
@@ -42,14 +60,28 @@ mkdir -p "${LOCAL_LOG_DIR}"
 
 # Structured per-channel log directories. -z compresses over the (possibly slow)
 # beam-line ethernet; --append-verify is safe for append-only growing log files.
+# In live mode, skip the heavy SEE state dumps -- the JSONL still reports every
+# SEE, so live monitoring loses nothing; only the offline-analysis payload waits.
+LIVE_EXCLUDES=()
+if [ "${PULL_MODE}" != "full" ]; then
+    LIVE_EXCLUDES=(--exclude=see_dumps/ --exclude='*.bin')
+fi
+
 for sub in memory compute boot_state; do
     mkdir -p "${LOCAL_LOG_DIR}/${sub}"
     rsync -az --append-verify \
+        "${LIVE_EXCLUDES[@]+"${LIVE_EXCLUDES[@]}"}" \
         -e "ssh ${SSH_OPTS}" \
         "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/" \
         "${LOCAL_LOG_DIR}/${sub}/" \
         || echo "pull_logs: rsync of ${sub} failed (DUT may be down/rebooting)" >&2
 done
+
+if [ "${PULL_MODE}" != "full" ]; then
+    echo "pull_logs: live mode -- JSONL only (see_dumps/pstore/sidecars deferred to PULL_MODE=full)"
+    echo "pull_logs: completed at $(date -Iseconds)"
+    exit 0
+fi
 
 # Post-processing sidecars: the compute triage tool (see_dump_triage.py) hashes
 # each dumped checkpoint against the board's PER-BOARD golden table, which lives

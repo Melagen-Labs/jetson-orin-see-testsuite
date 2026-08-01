@@ -15,6 +15,41 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### Pull modes: light JSONL-only pulls during a run, heavy dumps at the end
+
+Requested by the team: *"only send whether or not an SEE was detected (less data),
+then send the full post processing data at the end — I don't want to send over
+heavy workload mid test."*
+
+- **`_pending_` — arbiter/pull_logs.sh**
+  - New **`PULL_MODE`** env (default **`live`**). In `live` the periodic pull moves
+    **only the structured JSONL event logs** — every SEE is still fully *reported*
+    there (`see_event` / anomalous `checksum` / `mem_upset`, a few hundred bytes
+    each), which is exactly what the coordinator's live panel tails, so live
+    monitoring loses nothing. It **excludes `see_dumps/` and `*.bin`** (each SEE
+    state dump is ~10 MB = 20 checkpoints × 512 KB) and skips pstore + the
+    golden/particles sidecars, then exits early. Mid-test transfer drops from
+    tens of MB to ~kB, and DUT CPU (rsync read + SSH encrypt + `-z` gzip on 10 MB
+    binaries) drops with it — the workload under test is no longer perturbed by
+    log traffic.
+  - `PULL_MODE=full` is the end-of-run pull: dumps, pstore, golden table, config —
+    everything `see_dump_triage.py` needs. Run once after a test: `PULL_MODE=full
+    bash pull_logs.sh`.
+  - Verified both paths (live early-exits with JSONL only, exit 0; full attempts
+    sidecars + pstore) and that a failed pull still exits 0 and never blocks.
+- **`_pending_` — arbiter/arbiter_main.py**
+  - `--pull-mode {live,full}` (default `live`) for the periodic pull; the mode is
+    passed through to the script and recorded on every `PULL` correlator record.
+  - **Automatic end-of-run `full` pull on shutdown** (after the pull thread stops,
+    so it can't race a periodic pull), preceded by a `FINAL_PULL_START` record —
+    this is what actually retrieves the SEE dumps for offline analysis.
+    `--no-final-pull` opts out; `--final-pull-timeout` (default 900 s) allows for
+    many 10 MB dumps. Refactored the pull into reusable `run_pull()` / `_pull_env()`.
+  - **Caveat:** the arbiter stays up across many tests, so the automatic full pull
+    fires at *arbiter* shutdown, not after each run. Between runs in one session,
+    the operator runs `PULL_MODE=full bash pull_logs.sh` by hand (documented in the
+    script header).
+
 ### SEE post-processing: offline dump triage tool + pull the per-board golden table
 
 - **`c57e53e` — jetson/compute/cuda_particles/tools/see_dump_triage.py** (new)

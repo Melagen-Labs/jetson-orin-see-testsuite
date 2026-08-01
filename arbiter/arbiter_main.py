@@ -105,39 +105,56 @@ def power_thread(args, correlate, power_log, stop):
         correlate("power", {"event": "POWER_READER_DOWN", "error": str(exc)})
 
 
-def pull_thread(args, correlate, stop):
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pull_logs.sh")
-    if not args.dut_host:
-        correlate("pull_logs", {"event": "PULL_DISABLED",
-                                "reason": "no --dut-host given"})
-        return
+def _pull_env(args, mode):
+    """Environment for one pull_logs.sh invocation in the given PULL_MODE."""
     env = dict(os.environ)
     env.update({
         "DUT_HOST": args.dut_host,
         "DUT_USER": args.dut_user,
         "DUT_LOG_DIR": args.dut_log_dir,
         "LOCAL_LOG_DIR": args.local_log_dir,
+        "PULL_MODE": mode,
     })
     if args.ssh_key:
         env["SSH_KEY"] = args.ssh_key
+    return env
+
+
+def run_pull(args, correlate, mode, timeout):
+    """Run one pull_logs.sh in `mode`; correlate the outcome. Never raises."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pull_logs.sh")
+    try:
+        result = subprocess.run(
+            ["bash", script],
+            env=_pull_env(args, mode), capture_output=True, text=True,
+            timeout=timeout,
+        )
+        correlate("pull_logs", {
+            "event": "PULL",
+            "mode": mode,
+            "returncode": result.returncode,
+            "stdout_tail": result.stdout[-500:],
+            "stderr_tail": result.stderr[-500:],
+        })
+    except subprocess.TimeoutExpired:
+        correlate("pull_logs", {"event": "PULL_TIMEOUT", "mode": mode,
+                                "timeout_s": timeout})
+    except Exception as exc:
+        correlate("pull_logs", {"event": "PULL_ERROR", "mode": mode,
+                                "error": str(exc)})
+
+
+def pull_thread(args, correlate, stop):
+    """Periodic in-run pull. Defaults to PULL_MODE=live: JSONL only, so every SEE
+    is still reported (that is what the live panel reads) while the ~10 MB per-SEE
+    state dumps stay on the DUT until an end-of-run PULL_MODE=full pull. Keeps
+    mid-test network + DUT CPU load minimal."""
+    if not args.dut_host:
+        correlate("pull_logs", {"event": "PULL_DISABLED",
+                                "reason": "no --dut-host given"})
+        return
     while not stop.is_set():
-        try:
-            result = subprocess.run(
-                ["bash", script],
-                env=env, capture_output=True, text=True,
-                timeout=args.pull_timeout,
-            )
-            correlate("pull_logs", {
-                "event": "PULL",
-                "returncode": result.returncode,
-                "stdout_tail": result.stdout[-500:],
-                "stderr_tail": result.stderr[-500:],
-            })
-        except subprocess.TimeoutExpired:
-            correlate("pull_logs", {"event": "PULL_TIMEOUT",
-                                    "timeout_s": args.pull_timeout})
-        except Exception as exc:
-            correlate("pull_logs", {"event": "PULL_ERROR", "error": str(exc)})
+        run_pull(args, correlate, args.pull_mode, args.pull_timeout)
         stop.wait(args.pull_interval)
 
 
@@ -165,6 +182,19 @@ def parse_args(argv=None):
                         help="UDP port to receive heartbeats (default: %(default)s)")
     parser.add_argument("--heartbeat-timeout", type=float, default=3.0,
                         help="Seconds before declaring HEARTBEAT_LOST (default: %(default)s)")
+    parser.add_argument("--pull-mode", default="live", choices=["live", "full"],
+                        help="Mode for the PERIODIC in-run pull. 'live' (default) "
+                             "moves only the JSONL event logs -- every SEE is still "
+                             "reported, but the ~10 MB per-SEE state dumps stay on "
+                             "the DUT, so a running test isn't loaded down. 'full' "
+                             "pulls dumps+pstore+sidecars every interval (heavy).")
+    parser.add_argument("--no-final-pull", action="store_true",
+                        help="Skip the automatic PULL_MODE=full pull on shutdown "
+                             "(that final pull is what fetches the SEE state dumps "
+                             "and golden table for offline post-processing).")
+    parser.add_argument("--final-pull-timeout", type=float, default=900.0,
+                        help="Max seconds for the end-of-run full pull, which may "
+                             "move many 10 MB dumps (default: %(default)s)")
     parser.add_argument("--pull-interval", type=float, default=30.0,
                         help="Seconds between rsync pulls (default: %(default)s)")
     parser.add_argument("--pull-timeout", type=float, default=120.0,
@@ -203,6 +233,14 @@ def main(argv=None) -> int:
         correlate("arbiter", {"event": "STOP"})
         for thread in threads:
             thread.join(timeout=5.0)
+        # End-of-run: fetch what the live pulls deliberately left behind -- the SEE
+        # state dumps, pstore records, and the per-board golden table + config that
+        # see_dump_triage.py needs. Runs after the pull thread has stopped, so it
+        # can't race a periodic pull. (Between tests in one session, run
+        # `PULL_MODE=full bash pull_logs.sh` by hand -- the arbiter stays up.)
+        if args.dut_host and not args.no_final_pull:
+            correlate("pull_logs", {"event": "FINAL_PULL_START", "mode": "full"})
+            run_pull(args, correlate, "full", args.final_pull_timeout)
     return 0
 
 
