@@ -148,11 +148,32 @@ The receiver remains active while waiting for connections. Stop it with `Ctrl+C`
 
 ### Window 2: start the TCP-connected GUI
 
+`app_local_tcp.py` defaults to `--host 192.168.1.20` (a real DUT over direct
+Ethernet), so for the **local** receiver you must point it at localhost explicitly:
+
 ```powershell
-& "C:\msys64\ucrt64\bin\python.exe" ".\app_local_tcp.py"
+& "C:\msys64\ucrt64\bin\python.exe" ".\app_local_tcp.py" --host 127.0.0.1
 ```
 
 Perform one confirmed Start/Stop cycle. The GUI should return to `IDLE`, and both coordinator and receiver JSONL files should contain correlated records.
+
+## Run against a Jetson board (one or many)
+
+The GUI targets a DUT with `--host`; the board-side receiver (`test_control.service`,
+in the `jetson-orin-see-testsuite` repo) listens on TCP `6000`. Point it at each
+board in turn — nothing else changes per board:
+
+```powershell
+# Direct Ethernet — one board on the cable at a time (every board uses this same IP):
+& "C:\msys64\ucrt64\bin\python.exe" ".\app_local_tcp.py" --host 192.168.1.20
+
+# A specific board over Tailscale (MagicDNS name or its 100.x.y.z):
+& "C:\msys64\ucrt64\bin\python.exe" ".\app_local_tcp.py" --host orin-nano-03
+```
+
+The GUI's status line shows the live target host:port — confirm it names the board
+you intend before clicking **Start**. The `START_TEST`/`STOP_TEST` contract the DUT
+receiver implements is documented in [`docs/protocol.md`](docs/protocol.md).
 
 ## Planned work
 
