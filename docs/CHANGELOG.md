@@ -15,6 +15,75 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### compute + memory: concise "SEE Detected" operator line during a run
+
+- **`_pending_` — jetson/compute/cuda_particles/particles_main.cpp, jetson/memory/mem_check.py**
+  - Both deployed detectors now print a **one-line human-readable `SEE Detected`
+    summary to the journal** (systemd `StandardError`) at each detection, so an
+    operator watching `journalctl -f` sees each event live without parsing JSONL.
+  - **Compute:** classifies the subtype — `nonfinite` (NaN/Inf), `out_of_bounds`
+    (|pos| > 2.0), or `golden_mismatch` (hash divergence) — and the CUDA-fault path
+    reports `sim_fault (<cuda error>)`. Each line states whether the post-processing
+    state dump was written (`post-processing dump saved -> see_dumps/…` vs
+    `NOT saved`). Synthetic runs (`--inject`/`--chaos`) are tagged `[SYNTHETIC]`.
+  - **Memory:** one concise summary per sweep with upsets (`mem_upset x<N>`, pattern,
+    target), noting how many per-byte records were saved — memory's post-processing
+    data is those inline `mem_upset` records (no binary dump), and the line flags when
+    the per-sweep report cap truncated them.
+  - **Schema-v1 JSONL records are unchanged** — these are additive stderr lines the
+    arbiter never parses; the frozen `see_event`/`sim_fault`/`mem_upset` contracts the
+    arbiter and result CSV depend on are untouched.
+  - **Not yet rebuilt on hardware** — `cuda_particles` recompiles on the Jetson
+    (`setup-board.sh` or `fleet.sh build`); pending after the current spike test.
+
+### Fix: heartbeat + boot-state services never installed on a scripted board
+
+- **`_pending_` — jetson/heartbeat/heartbeat_sender.service, jetson/boot_state/boot_state_logger.service, jetson/boot_state/boot_state_logger-boot.service, scripts/setup-board.sh, scripts/fleet.sh, docs/SERVICES.md, docs/FLASH_AND_BRINGUP.md, docs/DEPLOYMENT.md, jetson/systemd/README.md, README.md**
+  - **Root cause:** these three units still carried the legacy `/opt/radtest/...`
+    deploy path (in both `ExecStart` and `Documentation=`), but the fleet actually
+    runs from the git clone at `/home/melagen/see-testsuite` — the path the proven
+    `cuda_particles` / `mem_check_gpu` / `test_control` units already use. Worse,
+    `setup-board.sh` only ever installed those three; it never copied or enabled the
+    heartbeat sender (channel 3b) or the boot-state loggers (channel 4). Net effect:
+    a board brought up purely by the script **never ran the heartbeat or boot-state
+    loggers** — so the arbiter had no 1 Hz liveness signal to detect a hung/latched
+    board (a primary SEL/SEFI signal) and no autonomous-reboot evidence.
+  - **Units:** repointed all three `ExecStart` script paths and `Documentation=` URLs
+    from `/opt/radtest/...` to `/home/melagen/see-testsuite/...`. No behavioural or
+    log-schema change — only the launch/doc paths.
+  - **`setup-board.sh` [7/7]:** now copies + `enable --now`s all five deployed units
+    (added `heartbeat_sender`, `boot_state_logger`, `boot_state_logger-boot`). Added
+    `HEARTBEAT`/`BOOT` path vars alongside the existing channel vars, and an
+    `ARBITER_IP` var (default `192.168.1.10`, override `ARBITER_IP=x.x.x.x
+    ./setup-board.sh NN`) that `sed`-patches `--arbiter-ip` in the *installed* copy of
+    the heartbeat unit only, leaving the repo unit at its documented default.
+  - **`/var/log/radtest/boot_state`:** unchanged — still provisioned by the one-time
+    operator step (FLASH_AND_BRINGUP.md 1b, `melagen:radlog` setgid mode 2750), which
+    a setgid dir hands to `radpull` for log pull. Boot-state units run as root and the
+    logger also `os.makedirs()` the dir if absent, so a fresh board still logs.
+  - **`fleet.sh` fixed alongside:** its `restart`/`status` targeted `cuda_particles
+    mem_check` — the wrong memory unit (`mem_check` is the non-deployed CPU/2a tester;
+    the deployed one is `mem_check_gpu`) and omitted `test_control`, `heartbeat_sender`,
+    and `boot_state_logger`. Both now cover the full deployed set (`restart` excludes
+    the oneshot boot logger so it can't append a spurious boot record).
+  - **Docs synced:** `SERVICES.md` now documents all five deployed units in two
+    classes (ARMED-gated workloads vs. always-on monitors) with an always-on install
+    block, plus arbiter-IP guidance for the heartbeat (fleet-wide, not per-board:
+    beam-line `192.168.1.10` vs. the arbiter laptop's Tailscale IP for remote testing); `FLASH_AND_BRINGUP.md` ("five services" not three, heartbeat now a service
+    in the §4 checks, master verified-state box flags the two newly-added services as
+    pending a `setup-board.sh` re-run); `DEPLOYMENT.md` service/arming section; and
+    `jetson/systemd/README.md` (deploy path `/opt/radtest` → `/home/melagen/see-testsuite`,
+    points at `setup-board.sh` as the real installer). Top-level `README.md`
+    component-status rows for heartbeat + boot-state updated from "🟠 tentative,
+    untested" to "🟡 installed by `setup-board.sh`" (heartbeat sender verified
+    streaming 1 Hz; on-hardware service enable still pending).
+  - **Verified on `orin-nano-01` (non-sudo):** staged the corrected files into the
+    board's clone; confirmed no `/opt/radtest` remains, `ExecStart`/`Documentation`
+    resolve to real on-board scripts, `setup-board.sh` passes `bash -n`, and the
+    board already had only `cuda_particles`/`mem_check_gpu`/`test_control` installed
+    (reproducing the gap). Confirmed `/var/log/radtest/boot_state` exists mode 2750.
+    The sudo `cp`+`enable --now` install is operator-run (handed off separately).
+
 ### Chaos mode: continuous random GPU bit-flips (test only) — verified on hardware
 
 - **`8b7c527` — jetson/compute/cuda_particles/particles_main.cpp**

@@ -333,6 +333,19 @@ def main():
                         "sweep": sweeps + 1,
                     })
 
+                # Operator-facing one-liner (journal): concise SEE summary for this
+                # sweep. The per-byte address/expected/actual/xor records emitted
+                # above are this channel's post-processing data (memory has no
+                # separate binary dump, unlike cuda_particles' see_dumps/).
+                if total_mism > 0:
+                    saved = ("%d record(s)" % emitted if total_mism <= emitted
+                             else "%d of %d record(s) (capped; +overflow record)"
+                                  % (emitted, total_mism))
+                    print("[mem_check] SEE Detected: mem_upset x%d "
+                          "(pattern 0x%02x, %s, sweep %d) | post-processing data saved: %s"
+                          % (total_mism, val, target, sweeps + 1, saved),
+                          file=sys.stderr, flush=True)
+
                 sweeps += 1
                 write_heartbeat(cfg["heartbeat_path"], sweeps, upsets, "0x%02x" % val)
 

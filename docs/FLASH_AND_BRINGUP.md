@@ -61,12 +61,17 @@ A master-ready board has:
 
 > **Verified current state of board 1 (2026-07-31).** Checked directly on
 > `100.122.15.91`:
-> - ✅ **On the clone model** — all three units point at
+> - ✅ **On the clone model** — every unit points at
 >   `/home/melagen/see-testsuite/...` (the older scp layout is gone; the
->   `DEPLOYMENT.md` 2026-07-30 snapshot is stale). Nothing to cut over.
-> - ✅ **Services correct** — `cuda_particles`, `mem_check_gpu`, `test_control`
->   enabled on clone paths; CPU `mem_check` disabled (GPU-only). All inactive
->   except `test_control` (correct stopped state).
+>   `DEPLOYMENT.md` 2026-07-30 snapshot is stale). The `heartbeat_sender` and both
+>   `boot_state_logger` units carried a stale `/opt/radtest` path until 2026-08-01;
+>   now fixed. Nothing to cut over.
+> - ⚠️ **Services** — `cuda_particles`, `mem_check_gpu`, `test_control` enabled on
+>   clone paths; CPU `mem_check` disabled (GPU-only); ARMED workloads inactive
+>   except `test_control` (correct stopped state) when idle. **`heartbeat_sender` +
+>   `boot_state_logger` (×2) were added to `setup-board.sh` on 2026-08-01 but are
+>   not yet enabled on the master** — re-run `setup-board.sh 01`, or the always-on
+>   install block in [`SERVICES.md`](SERVICES.md), to wire them in.
 > - ✅ **Named `orin-nano-01`** — `setup-board.sh 01` has been run (§1a).
 > - ✅ **Hardened** — watchdog + fast panic reboot + headless applied (§1c).
 > - ✅ **Ethernet-tested** — the §4 checks pass on the master itself (§1d).
@@ -83,9 +88,13 @@ git clone https://github.com/Reece122/jetson-orin-see-testsuite.git ~/see-testsu
 ```
 `setup-board.sh` does hostname/identity, clone, GPU deps (CuPy, pinned), builds
 the compute channel, generates this board's golden table, arms the channels, and
-installs+starts the three core services (`cuda_particles`, `mem_check_gpu`,
-`test_control`). Re-running is safe. Details: [`DEPLOYMENT.md`](DEPLOYMENT.md) and
-the script's inline comments.
+installs+starts **all five** deployed services — the two ARMED-gated workloads
+(`cuda_particles`, `mem_check_gpu`) plus the three always-on monitors
+(`test_control`, `heartbeat_sender`, and the two `boot_state_logger` units for
+channel 4; heartbeat + boot-state were previously omitted). The heartbeat's target
+arbiter is configurable: `ARBITER_IP=x.x.x.x ~/see-testsuite/scripts/setup-board.sh NN`
+(default `192.168.1.10`). Re-running is safe. Details: [`SERVICES.md`](SERVICES.md),
+[`DEPLOYMENT.md`](DEPLOYMENT.md), and the script's inline comments.
 
 For board 1 specifically, the clone + services are already in place — the main
 thing `setup-board.sh 01` fixes is the hostname (currently `ubuntu` → `orin-nano-01`)
@@ -399,7 +408,7 @@ master, so clones inherit it; no need to redo per board.)
 |---|---|---|---|
 | **1** | Link | Set both static IPs, `ping` each way | Both replies succeed |
 | **2** | Control (TCP 6000) | Arbiter sends `START_TEST` JSON to `192.168.1.20:6000` | Reply `status:"ACCEPTED"`; both services `active`; beam metadata (`run_id/beam_energy/shield_config`) appears in the JSONL logs |
-| **3** | Heartbeat (UDP 5555) | Run `heartbeat_sender.py --arbiter-ip 192.168.1.10`; listen on arbiter | One `{boot_id,seq,ts}` per second, `seq` climbing; unplug→stops, replug→resumes |
+| **3** | Heartbeat (UDP 5555) | `heartbeat_sender.service` streams automatically once installed (`setup-board.sh` / SERVICES.md); or run `heartbeat_sender.py --arbiter-ip 192.168.1.10` by hand. Listen on the arbiter | One `{boot_id,seq,ts}` per second, `seq` climbing; unplug→stops, replug→resumes |
 | **4** | Log pull (SSH) | From arbiter: `rsync -az -e ssh radpull@192.168.1.20:/var/log/radtest/ ./pulled_logs/` | Fresh `.jsonl` files transfer under `radpull`'s key |
 
 ### Full dry run (end to end) — from the coordinator GUI

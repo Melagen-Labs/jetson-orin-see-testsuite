@@ -23,28 +23,36 @@ detect (crash vs. stall vs. corruption — see
 
 ## Install
 
-The unit files assume the repo is deployed at `/opt/radtest` and logs go to
-`/var/log/radtest/...`. Adjust the `ExecStart` paths in each unit if you deploy
-elsewhere. Then, on the DUT:
+**The normal path is `scripts/setup-board.sh`** — it installs and enables the full
+deployed set (`cuda_particles`, `mem_check_gpu`, `test_control`, `heartbeat_sender`,
+and both `boot_state_logger` units) in one run. See [`docs/SERVICES.md`](../../docs/SERVICES.md)
+for the per-service breakdown and the ARMED arming model. The steps below are the
+**manual equivalent** for installing a board by hand.
+
+The fleet deploys from the git clone at `/home/melagen/see-testsuite`, and logs go
+to `/var/log/radtest/...` (the log tree is provisioned by the one-time operator step
+in [`docs/FLASH_AND_BRINGUP.md`](../../docs/FLASH_AND_BRINGUP.md) §1b). On the DUT:
 
 ```bash
+# Log tree (idempotent; the operator step in FLASH_AND_BRINGUP.md §1b sets the
+# melagen:radlog setgid ownership the arbiter's radpull reader needs):
 sudo mkdir -p /var/log/radtest/{compute,memory,boot_state}
 
-# Copy every unit in the repo into place:
-sudo cp /opt/radtest/jetson/compute/cpu_sort_check.service /etc/systemd/system/
-sudo cp /opt/radtest/jetson/heartbeat/heartbeat_sender.service /etc/systemd/system/
-sudo cp /opt/radtest/jetson/boot_state/boot_state_logger.service /etc/systemd/system/
-sudo cp /opt/radtest/jetson/boot_state/boot_state_logger-boot.service /etc/systemd/system/
+# Copy the deployed units into place (clone paths):
+sudo cp /home/melagen/see-testsuite/jetson/heartbeat/heartbeat_sender.service /etc/systemd/system/
+sudo cp /home/melagen/see-testsuite/jetson/boot_state/boot_state_logger.service /etc/systemd/system/
+sudo cp /home/melagen/see-testsuite/jetson/boot_state/boot_state_logger-boot.service /etc/systemd/system/
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now cpu_sort_check.service
 sudo systemctl enable --now heartbeat_sender.service
 sudo systemctl enable --now boot_state_logger.service
 sudo systemctl enable --now boot_state_logger-boot.service
 ```
 
-(Or, from the unit directories, `sudo cp *.service /etc/systemd/system/ &&
-sudo systemctl daemon-reload && sudo systemctl enable --now <name>`.)
+> `cpu_sort_check.service` (CPU workload, channel 1b) is **not deployed** — the
+> campaign is GPU-only to minimize CPU workload (see [`docs/SERVICES.md`](../../docs/SERVICES.md)).
+> Its unit remains in the repo for reference; install it only on a board where you
+> specifically want the CPU channel.
 
 ## Verify
 

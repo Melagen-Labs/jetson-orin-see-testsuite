@@ -28,8 +28,8 @@ components as working; they are a starting point for the staged build-out in
 | `jetson/vendor/gpu-burn` (secondary GPU stress) | 🟠 Tentative — not built/qualified on DUT |
 | `jetson/vendor/cuda_memtest` (GPU memory, channel 2b) | 🟠 Tentative — not built/qualified on DUT |
 | `jetson/compute/cpu_sort_check.py` (CPU workload) | 🟠 Tentative — not run on DUT |
-| `jetson/heartbeat/` + `arbiter/heartbeat_listener.py` | 🟠 Tentative — scaffolded, untested |
-| `jetson/boot_state/` + pstore/ramoops | 🟠 Tentative — scaffolded, untested |
+| `jetson/heartbeat/heartbeat_sender.py` (DUT UDP heartbeat) | 🟡 **Sender verified streaming 1 Hz over Ethernet** (climbing `seq`); now installed by `setup-board.sh` as `heartbeat_sender.service` (auto-start on the master pending the service install). Arbiter-side `heartbeat_listener.py` is in the teammates' separate repo. |
+| `jetson/boot_state/` (DUT boot-event + uptime loggers) | 🟡 **Installed by `setup-board.sh`** (`boot_state_logger.service` + `-boot`, run as root → `/var/log/radtest/boot_state`); logger has built-in self-tests. On-hardware service enable pending; kernel pstore/ramoops capture is separate ([setup](docs/PSTORE_SETUP.md)). |
 | `arbiter/` correlator, power reader, log pull | 🟠 Tentative — scaffolded, untested |
 | Shared JSONL event schema (`docs/EVENT_SCHEMA.md`) | 🟠 Planned — freeze before building the other channels ([BUILD_PLAN §5a](docs/BUILD_PLAN.md)) |
 | Operator dashboard (`arbiter/dashboard/`) — live view of all channel inputs/outputs | 🟠 Planned — read-only arbiter-side dashboard over the frozen schema ([BUILD_PLAN §5b](docs/BUILD_PLAN.md)) |
