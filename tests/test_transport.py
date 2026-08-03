@@ -15,7 +15,7 @@ from coordinator.transport import (
 class TestMockTransport(unittest.TestCase):
     def test_start_request_is_accepted(self) -> None:
         request = TestRequest.create(
-            beam_energy_mev=100,
+            beam_energy_mev=200,
             shielding_material="MLC1",
             shielding_thickness_mm=12,
         )

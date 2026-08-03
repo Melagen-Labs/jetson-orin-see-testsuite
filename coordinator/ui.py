@@ -138,7 +138,7 @@ class TestCoordinatorApp(ttk.Frame):
         self.coordinator_state = CoordinatorState.IDLE
         self.active_test_request_id: str | None = None
 
-        self.energy_var = tk.StringVar(value="100")
+        self.energy_var = tk.StringVar(value="200")
         self.material_var = tk.StringVar(value="MLC1")
         self.thickness_var = tk.StringVar(value="12")
         self.duration_var = tk.StringVar(value=str(DEFAULT_DURATION_S))

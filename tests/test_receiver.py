@@ -20,7 +20,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -62,7 +62,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            53,
+            50,
             "Aluminium",
             8,
         )
@@ -79,7 +79,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -96,7 +96,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -145,7 +145,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -177,7 +177,7 @@ class TestReceiverValidation(unittest.TestCase):
         self,
     ) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -198,7 +198,7 @@ class TestReceiverState(unittest.TestCase):
         state = ReceiverState()
 
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -223,12 +223,12 @@ class TestReceiverState(unittest.TestCase):
         state = ReceiverState()
 
         first = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
         second = TestRequest.create(
-            53,
+            50,
             "Aluminium",
             8,
         )
@@ -293,7 +293,7 @@ class TestReceiverState(unittest.TestCase):
         state = ReceiverState()
 
         start_request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )

@@ -12,8 +12,9 @@ DEFAULT_DURATION_S = 100
 MAX_DURATION_S = 86400  # sanity cap (24 h), mirrors the DUT receiver
 
 BEAM_ENERGIES_MEV = (
-    53,
-    100,
+    50,
+    63,
+    125,
     200,
 )
 

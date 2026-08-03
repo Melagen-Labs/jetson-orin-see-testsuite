@@ -12,14 +12,14 @@ from coordinator.request import (
 class TestStartTestRequest(unittest.TestCase):
     def test_valid_start_request(self) -> None:
         request = TestRequest.create(
-            beam_energy_mev=100,
+            beam_energy_mev=200,
             shielding_material="MLC1",
             shielding_thickness_mm=12,
         )
 
         self.assertEqual(request.protocol_version, 1)
         self.assertEqual(request.command, "START_TEST")
-        self.assertEqual(request.beam_energy_mev, 100)
+        self.assertEqual(request.beam_energy_mev, 200)
         self.assertEqual(
             request.shielding_material,
             "MLC1",
@@ -35,7 +35,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_start_json_output(self) -> None:
         request = TestRequest.create(
-            53,
+            50,
             "Aluminium",
             8,
         )
@@ -48,7 +48,7 @@ class TestStartTestRequest(unittest.TestCase):
         )
         self.assertEqual(
             payload["beam_energy_mev"],
-            53,
+            50,
         )
         self.assertEqual(
             payload["shielding_material"],
@@ -61,7 +61,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_default_duration_is_100(self) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
         )
@@ -74,7 +74,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_custom_duration_is_carried(self) -> None:
         request = TestRequest.create(
-            100,
+            200,
             "MLC1",
             12,
             duration_s=250,
@@ -85,7 +85,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_zero_duration_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                100,
+                200,
                 "MLC1",
                 12,
                 duration_s=0,
@@ -94,7 +94,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_negative_duration_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                100,
+                200,
                 "MLC1",
                 12,
                 duration_s=-5,
@@ -103,7 +103,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_non_numeric_duration_is_rejected(self) -> None:
         with self.assertRaises(TypeError):
             TestRequest.create(
-                100,
+                200,
                 "MLC1",
                 12,
                 duration_s="100",
@@ -112,7 +112,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_boolean_duration_is_rejected(self) -> None:
         with self.assertRaises(TypeError):
             TestRequest.create(
-                100,
+                200,
                 "MLC1",
                 12,
                 duration_s=True,
@@ -129,7 +129,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_invalid_material_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                100,
+                200,
                 "Copper",
                 12,
             )
@@ -137,7 +137,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_invalid_thickness_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                100,
+                200,
                 "MLC1",
                 13,
             )
