@@ -1073,6 +1073,12 @@ class TestCoordinatorApp(ttk.Frame):
             # convenience that reuses the normal STOP path.
             self._schedule_auto_stop(request.duration_s)
 
+            # Fresh run: clear the live SEE panel so it shows only THIS run's events.
+            # The tailer tracks new events by byte offset, so this only drops the stale
+            # display from the previous run (otherwise a clean run still shows the prior
+            # run's SEEs, as seen 2026-08-02).
+            self._clear_see_panel()
+
             self._record_event(
                 "START_TEST_ACCEPTED",
                 transport=self.transport_mode,
@@ -1397,6 +1403,15 @@ class TestCoordinatorApp(ttk.Frame):
             f"[{timestamp}] {message}\n",
         )
         self.see_log.see("end")
+        self.see_log.configure(state="disabled")
+
+    def _clear_see_panel(self) -> None:
+        """Empty the live SEE panel. Called on a new START so the panel shows only
+        the current run's events -- the tailer already tracks new events by byte
+        offset, so a clean run appends nothing; without this the previous run's rows
+        stayed visible and a clean run looked like it still had SEEs (seen 2026-08-02)."""
+        self.see_log.configure(state="normal")
+        self.see_log.delete("1.0", "end")
         self.see_log.configure(state="disabled")
 
     def _poll_sees(self) -> None:
