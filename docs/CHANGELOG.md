@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### control: preserve config ownership on START_TEST; retry a racing STOP_TEST
 
-- **`_pending_` — jetson/control/test_control.py**
+- **`78dbf44` — jetson/control/test_control.py**
   - **Config ownership (fixes the no-sudo chaos toggle):** `test_control.py` runs as root
     and rewrites each channel's JSON config on `START_TEST` via write-tmp-then-`os.replace`,
     which left the config (e.g. `particles.json`) owned `root:root` — so an operator's
