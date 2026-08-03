@@ -76,7 +76,7 @@ DEFAULTS = {
     "supported_commands": ["START_TEST", "STOP_TEST"],
     "default_duration_s": 100,         # DUT-owned run timer when START omits duration_s
     "max_duration_s": 86400,           # sanity cap (24 h) on an operator-supplied duration
-    "beam_energies_mev": [53, 100, 200],
+    "beam_energies_mev": [50, 63, 125, 200],
     "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
     "shielding_thicknesses_mm": [8, 12, 16],
 
