@@ -15,6 +15,17 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ## 2026-08-01
 
+### arbiter: one-command launcher (start_arbiter.py)
+
+- **`_pending_` — arbiter/start_arbiter.py (new)**
+  - Single-command arbiter startup: `python arbiter/start_arbiter.py [--host …]` launches
+    the heartbeat listener (this repo's `arbiter/heartbeat_listener.py`, in its own window),
+    a live `scp` log-pull loop (background thread → `<coordinator>/arbiter_logs`, feeding the
+    GUI's live SEE panel — no rsync/bash needed, so it's portable across Windows/Linux/Mac),
+    and the coordinator GUI (`app_local_tcp.py`). Replaces the three-terminal manual startup.
+    Assumes `melagen-test-coordinator` is a sibling clone (override with `--coordinator-dir`);
+    exits with a clear message if the GUI or listener isn't found. `py_compile`-clean.
+
 ### arbiter: pull_logs.sh runs on a Windows arbiter (scp fallback when rsync absent)
 
 - **`777bcb3` — arbiter/pull_logs.sh**
