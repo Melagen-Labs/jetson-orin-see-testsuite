@@ -17,7 +17,7 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
 ### arbiter: one-command launcher (start_arbiter.py)
 
-- **`_pending_` — arbiter/start_arbiter.py (new)**
+- **`6588203` — arbiter/start_arbiter.py (new)**
   - Single-command arbiter startup: `python arbiter/start_arbiter.py [--host …]` launches
     the heartbeat listener (this repo's `arbiter/heartbeat_listener.py`, in its own window),
     a live `scp` log-pull loop (background thread → `<coordinator>/arbiter_logs`, feeding the
