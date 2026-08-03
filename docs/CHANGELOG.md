@@ -13,6 +13,24 @@ the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 > reference. `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream
 > but unmodified and unbuilt; all other channels remain tentative.
 
+## 2026-08-02
+
+### control: preserve config ownership on START_TEST; retry a racing STOP_TEST
+
+- **`_pending_` — jetson/control/test_control.py**
+  - **Config ownership (fixes the no-sudo chaos toggle):** `test_control.py` runs as root
+    and rewrites each channel's JSON config on `START_TEST` via write-tmp-then-`os.replace`,
+    which left the config (e.g. `particles.json`) owned `root:root` — so an operator's
+    no-sudo edit (like the chaos toggle) failed with `PermissionError`. `apply_metadata`
+    now captures the file's original uid/gid/mode and restores them on the tmp before the
+    atomic swap, so the config stays `melagen:melagen`. (Found 2026-08-02 on orin-nano-01.)
+  - **Racing STOP_TEST (fixes the intermittent "channels failed to stop"):** a `STOP_TEST`
+    arriving right after `START_TEST` could race a channel unit's own (re)start transition,
+    so the single `systemctl stop` returned non-zero once while it settled (a manual stop
+    ~12 s later succeeded). `do_stop` now retries the stop up to 3× with a 2 s backoff and
+    annotates the attempt count.
+  - Both verified `py_compile`-clean; behavioural fixes to be confirmed on the next hardware run.
+
 ## 2026-08-01
 
 ### arbiter: one-command launcher (start_arbiter.py)

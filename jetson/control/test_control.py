@@ -58,6 +58,7 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 
 
@@ -186,6 +187,7 @@ def apply_metadata(channel, meta):
     """Write run metadata into a channel's JSON config so its event log carries
     the beam/shield context. Leaves all other config keys untouched."""
     path = channel["config"]
+    st = os.stat(path)                   # capture the original owner/group/mode
     with open(path, "r", encoding="utf-8") as fp:
         cfg = json.load(fp)
     cfg.update(meta)                     # run_id / beam_energy / shield_config / fluence_source
@@ -193,6 +195,15 @@ def apply_metadata(channel, meta):
     with open(tmp, "w", encoding="utf-8") as fp:
         json.dump(cfg, fp, indent=2)
         fp.write("\n")
+    # This receiver runs as root, so the freshly-created tmp would land root:root and,
+    # after the swap, lock out melagen's no-sudo edits of the config (e.g. the chaos
+    # toggle -> PermissionError). Restore the config's original owner/group/mode before
+    # replacing it. Best-effort (we are root, so it should always succeed).
+    try:
+        os.chown(tmp, st.st_uid, st.st_gid)
+        os.chmod(tmp, st.st_mode & 0o777)
+    except OSError as exc:               # noqa: BLE001
+        sys.stderr.write("[test_control] could not preserve %s ownership: %s\n" % (path, exc))
     os.replace(tmp, path)                # atomic swap so a service never reads a half-written file
 
 
@@ -239,7 +250,18 @@ def do_stop(cfg):
         try:
             if os.path.exists(ch["armed_flag"]):
                 os.remove(ch["armed_flag"])           # rm ARMED so a reboot won't restart it
+            # A STOP arriving right after START can race the unit's own (re)start
+            # transition, so the first `systemctl stop` occasionally returns non-zero
+            # ("failed to stop") while the unit settles (observed 2026-08-02; a manual
+            # stop ~12 s later succeeded). Retry with a short backoff instead.
             ok, detail = systemctl("stop", ch["service"], cfg)
+            attempts = 1
+            while not ok and attempts < 3:
+                time.sleep(2.0)
+                ok, detail = systemctl("stop", ch["service"], cfg)
+                attempts += 1
+            if attempts > 1:
+                detail = "%s (after %d attempts)" % (detail, attempts)
             r["ok"], r["detail"] = ok, detail
         except Exception as exc:                      # noqa: BLE001
             r["ok"], r["detail"] = False, "disarm/stop error: %s" % exc
