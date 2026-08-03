@@ -25,6 +25,17 @@ struct Config {
     // it can be reconstructed offline on a reference Orin. See BUILD_PLAN 1a.
     bool               save_see_epochs   = true;
 
+    // --- chaos (TEST ONLY, default OFF) ----------------------------------
+    // Continuous random GPU bit-flips driven from the config, so a normal
+    // service-launched run (i.e. a GUI START_TEST) produces SEEs through the
+    // REAL pipeline (arbiter pull -> live panel -> CSV) for a pre-beam dry run --
+    // no CLI flag or service edit needed. Events are tagged synthetic. MUST be
+    // set back to false before a real beam run or it pollutes real data. A
+    // `--chaos` CLI flag still overrides these.
+    bool               chaos             = false;
+    float              chaos_prob        = 0.0001f;  // per-step flip probability
+    unsigned int       chaos_seed        = 1;
+
     // --- paths ---
     std::string        log_dir           = "./logs";
     std::string        golden_path       = "./data/golden_hashes.txt";

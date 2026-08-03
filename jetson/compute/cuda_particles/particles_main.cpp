@@ -219,20 +219,38 @@ int main(int argc, char **argv)
         fprintf(stderr, "[cuda_particles] ERROR: --inject must be bitflip|nan|oob\n");
         return 1;
     }
-    if ((!injectMode.empty() || chaos) && generateGolden) {
-        fprintf(stderr, "[cuda_particles] ERROR: refusing to inject/chaos while generating "
+    if (!injectMode.empty() && generateGolden) {
+        fprintf(stderr, "[cuda_particles] ERROR: refusing to inject while generating "
                         "the golden table (it would bake corruption into the baseline)\n");
         return 1;
     }
-    if (chaos && !(chaosProb > 0.0 && chaosProb <= 1.0)) {
-        fprintf(stderr, "[cuda_particles] ERROR: --chaos-prob must be in (0, 1]\n");
-        return 1;
-    }
-    if (chaos) srand(chaosSeed);
 
     Config cfg;
     if (!loadConfig(configPath, cfg)) {
         fprintf(stderr, "[cuda_particles] config '%s' not found; using defaults\n", configPath.c_str());
+    }
+
+    // Chaos may be driven from the CONFIG (chaos:true in particles.json), so a
+    // normal service-launched run -- a GUI START_TEST -- produces SEEs through the
+    // real pipeline (arbiter pull -> live panel -> CSV) for a pre-beam dry run. A
+    // CLI --chaos overrides the config. Resolved here, after the config is loaded.
+    if (!chaos && cfg.chaos) {
+        chaos = true;
+        chaosProb = cfg.chaos_prob;
+        chaosSeed = cfg.chaos_seed;
+    }
+    if (chaos && generateGolden) {
+        fprintf(stderr, "[cuda_particles] ERROR: refusing to run chaos while generating golden\n");
+        return 1;
+    }
+    if (chaos && !(chaosProb > 0.0 && chaosProb <= 1.0)) {
+        fprintf(stderr, "[cuda_particles] ERROR: chaos_prob must be in (0, 1]\n");
+        return 1;
+    }
+    if (chaos) {
+        srand(chaosSeed);
+        fprintf(stderr, "[cuda_particles] WARNING: CHAOS ON (prob=%g) -- synthetic SEEs, NOT clean data\n",
+                chaosProb);
     }
 
     // Fleet identity: jetson_id "auto" -> the board's hostname, so one config

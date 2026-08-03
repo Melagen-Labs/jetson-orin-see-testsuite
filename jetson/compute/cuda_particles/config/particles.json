@@ -9,6 +9,9 @@
   "tolerance_mode": "bitexact",
   "save_see_epochs": true,
 
+  "chaos": false,
+  "chaos_prob": 0.0001,
+
   "log_dir": "/var/log/radtest/compute",
   "golden_path": "./data/golden_hashes.txt",
   "heartbeat_path": "/var/log/radtest/compute/heartbeat.txt",

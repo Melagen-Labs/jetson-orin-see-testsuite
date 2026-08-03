@@ -83,6 +83,10 @@ bool loadConfig(const std::string &path, Config &out)
     getStr(j, "tolerance_mode",    out.tolerance_mode);
     getB  (j, "save_see_epochs",   out.save_see_epochs);
 
+    getB  (j, "chaos",             out.chaos);
+    getF  (j, "chaos_prob",        out.chaos_prob);
+    getU  (j, "chaos_seed",        out.chaos_seed);
+
     getStr(j, "log_dir",           out.log_dir);
     getStr(j, "golden_path",       out.golden_path);
     getStr(j, "heartbeat_path",    out.heartbeat_path);
