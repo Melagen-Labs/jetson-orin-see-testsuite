@@ -5,7 +5,10 @@ The arbiter is the system of record: it keeps running through a DUT hang,
 reboot, or latchup. This process:
 
   * listens for the DUT's UDP heartbeat (``heartbeat_listener``) on a thread,
-  * reads the power firmware's serial stream (``power_reader``) on a thread,
+  * reads a current/power stream (``power_reader``) on a thread -- see that
+    module: its serial transport is retired with the power-monitor firmware board
+    and awaits retarget to the DUT current collector's pulled records, so this
+    thread stays inert unless ``--power-serial-port`` is given,
   * on a timer, shells out to ``pull_logs.sh`` to rsync the DUT's ``memory/``,
     ``compute/``, and ``boot_state/`` logs (plus pstore) to the arbiter,
   * appends every event -- heartbeat loss/resume, power status changes, and
@@ -172,8 +175,11 @@ def parse_args(argv=None):
     parser.add_argument("--ssh-key", default=None,
                         help="SSH private key for the pull (default: pull_logs.sh's own default)")
     parser.add_argument("--power-serial-port", default=None,
-                        help="Serial device for the power firmware (e.g. /dev/ttyUSB0). "
-                             "If unset, the power channel is disabled.")
+                        help="Serial device for a current/power stream (e.g. "
+                             "/dev/ttyUSB0). Retired path -- the firmware board it "
+                             "was written for is cancelled. Leave unset; the power "
+                             "channel stays disabled until power_reader.py is "
+                             "retargeted to the DUT collector's pulled records.")
     parser.add_argument("--power-baud", type=int, default=115200,
                         help="Power serial baud (default: %(default)s)")
     parser.add_argument("--power-reconnect-delay", type=float, default=2.0,

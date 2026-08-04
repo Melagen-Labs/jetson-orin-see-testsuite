@@ -1,4 +1,7 @@
 # Arbiter-side Python dependencies.
 # heartbeat_listener.py and arbiter_main.py use only the standard library;
-# power_reader.py needs pyserial for the USB-serial link to the power firmware.
+# pyserial is only used by power_reader.py's serial transport, which is retired
+# along with the power-monitor firmware board (no new hardware this campaign).
+# Kept so the module still imports; drop it once power_reader.py is retargeted to
+# read the DUT current collector's pulled log records instead of a serial port.
 pyserial>=3.5

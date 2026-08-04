@@ -46,7 +46,7 @@ Tracked in [`arbiter/requirements.txt`](../arbiter/requirements.txt); install wi
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `pyserial` | >=3.5 | USB-serial link to the power-monitor firmware (`arbiter/power_reader.py`, §5). `heartbeat_listener.py` and `arbiter_main.py` use only the standard library. |
+| `pyserial` | >=3.5 | Serial transport in `arbiter/power_reader.py` (§5) — **retired** with the power-monitor firmware board (2026-08-03); kept only so the module imports, and droppable once that module is retargeted to the DUT current collector's pulled logs. `heartbeat_listener.py`, `arbiter_main.py`, and `start_arbiter.py` use only the standard library. |
 
 ## Vendored third-party (in-repo, not downloaded)
 

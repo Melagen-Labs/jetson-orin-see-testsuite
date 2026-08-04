@@ -37,10 +37,35 @@ case (reflashing, or rebuilding a master).
 | Board | Flashed | Master-ready (§1) | Cloned (§2) | Finalized (§3) | Ethernet-tested (§4) |
 |---|---|---|---|---|---|
 | orin-nano-01 (master) | ✅ | ✅ | n/a | n/a | ✅ |
-| orin-nano-02 … 07 | ⬜ | — | ⬜ | ⬜ | ⬜ |
+| orin-nano-02 | 🔶 in progress | — | ⬜ | ⬜ | ⬜ |
+| orin-nano-03 … 07 | ⬜ | — | ⬜ | ⬜ | ⬜ |
 
-Board 1 is now a validated master: named `orin-nano-01`, hardened, and
-Ethernet-tested — ready to image onto boards 2–7 (§2).
+Board 1 is a validated master: named `orin-nano-01`, hardened, Ethernet-tested,
+and as of **2026-08-02** the full dry-run pipeline passed on it end to end
+(synthetic SEEs → arbiter log pull → live SEE panel → results CSV, then a clean
+run confirming 0 SEEs). See [`DRYRUN_PIPELINE_TEST.md`](DRYRUN_PIPELINE_TEST.md).
+
+**Board 2 was left mid-flash.** Where it stopped: the Linux_for_Tegra BSP is on an
+external USB drive (not on any Jetson SSD), on a **live Ubuntu USB host**
+(non-persistent, user `ubuntu`), with `universe` enabled and
+`nfs-kernel-server` + `lbzip2` installing. Resume at §2 Method 1
+(`l4t_backup_restore.sh -b` to image board 1, then `-r` to restore onto board 2),
+then §3, then §4.
+
+> **⚠️ Before you image the master, settle what goes in it.** The flash makes six
+> identical copies — anything missing multiplies by six, and reflashing afterward
+> defeats the point of a provably bit-identical fleet. Two items to decide
+> deliberately rather than by accident:
+>
+> 1. **The current/SEL collector (channel 5)** lives in a separate tool owned by
+>    Ansh and Daniel and runs *on the DUT*. If it is going to run on the fleet it
+>    must be installed and enabled on the master **before** §2 — not added board by
+>    board later. If it is not ready, image without it and accept that adding it
+>    afterward means a reflash, or a fleet-wide `git pull` that breaks bit-identity.
+> 2. **pstore/ramoops** ([`PSTORE_SETUP.md`](PSTORE_SETUP.md)) is kernel and
+>    device-tree work applied at **flash time**. With no external power cutoff on
+>    this campaign, the pstore panic dump is primary "why did it die" evidence —
+>    verify it populates on the master (§1c) before imaging.
 
 ---
 
@@ -240,7 +265,7 @@ and machine-id. Each board needs its own identity before use.
 SSH into the clone and run it with **that board's two-digit number** — you supply
 the number, the script does the rest:
 ```bash
-ssh melagen@<new-board>
+ssh melagen@192.168.1.20
 ~/see-testsuite/scripts/setup-board.sh 03     # 02..07 — names it orin-nano-03, regenerates ITS golden, re-arms
 ```
 That single command now handles **everything that must differ per board**:
@@ -379,16 +404,17 @@ master image.
 
 ## 4. Test each board over Ethernet
 
-Full procedure with copy-paste commands (and the Windows-arbiter quirks) is in
-[`INTEGRATION_TEST.md`](INTEGRATION_TEST.md). Run this on the **master (§1d)** and
-on **every clone (§3)**.
+Run this on the **master (§1d)** and on **every clone (§3)**.
 
 **Validate the way you'll actually run the campaign: from the real coordinator
-GUI.** The four interface checks below are low-level diagnostics for isolating a
-fault; the *acceptance* test is the GUI dry run (Start → run → Stop → read the
-result), because that exercises the whole operator path end to end. The bare-laptop
-Python snippets in [`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) are a **fallback**
-for isolating the DUT when the GUI isn't handy — not the sign-off test.
+GUI.** The acceptance test is the end-to-end dry run in
+[`DRYRUN_PIPELINE_TEST.md`](DRYRUN_PIPELINE_TEST.md) (Start → run → Stop → read
+the result CSV), because that exercises the whole operator path. The four
+interface checks below are low-level diagnostics for isolating a fault when the
+dry run fails; the bare-laptop Python snippets in
+[`INTEGRATION_TEST.md`](INTEGRATION_TEST.md) — plus its first-contact setup for a
+brand-new board (static IPs, `radpull` key) — are the **fallback**, not the
+sign-off test.
 
 ### Topology
 

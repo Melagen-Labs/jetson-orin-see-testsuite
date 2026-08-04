@@ -35,7 +35,8 @@ coordinator GUI's live SEE panel then need exactly one parser instead of five.
   `actual`, `xor`.
 - **heartbeat**: `seq`, `uptime_s`.
 - **boot**: `boot_id`, `uptime_s`, `reboot_count`.
-- **power** (EE firmware, via arbiter): `current_mA`, `tripped` (bool).
+- **power** (DUT current collector, via arbiter): `current_mA`, `tripped` (bool —
+  with a software-only monitor this means "limit exceeded", not a real cutoff).
 
 ## Examples
 
@@ -46,7 +47,7 @@ coordinator GUI's live SEE panel then need exactly one parser instead of five.
 
 ## Status derivation
 
-`status` is the one field the dashboard colors on. Rule of thumb per channel:
+`status` is the one field the live SEE panel colors on. Rule of thumb per channel:
 `ok` normally; `anomaly` when the channel detects corruption (compute `anomaly`,
 memory mismatch); `tripped` for a power cutoff; `stall`/`crash` are emitted by the
 arbiter/supervisor when a channel's heartbeat freezes or its process dies;
