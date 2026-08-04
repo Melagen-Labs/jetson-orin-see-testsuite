@@ -2,7 +2,7 @@
 
 The arbiter has a **start/stop-test button**; pressing it sends a JSON command to
 each DUT over Ethernet. The arbiter (sender) lives in a teammate's separate repo;
-this repo implements only the **DUT-side receiver**, `jetson/control/test_control.py`,
+this repo implements only the **DUT-side receiver**, `jetson/control/control_receiver.py`,
 run as the `test_control.service` systemd unit.
 
 ## Wire contract

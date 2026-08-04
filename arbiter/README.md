@@ -37,7 +37,7 @@ above.
 
 - **Test-control** (arbiter → DUT): **TCP**, JSON command. See
   [`docs/CONTROL_INTERFACE.md`](../docs/CONTROL_INTERFACE.md). Receiver:
-  `jetson/control/test_control.py`.
+  `jetson/control/control_receiver.py`.
 - **Heartbeat** (DUT → arbiter): **UDP** liveness. Sender:
   `jetson/heartbeat/heartbeat_sender.py`.
 - **Event log schema** (what the arbiter parses): [`docs/EVENT_SCHEMA.md`](../docs/EVENT_SCHEMA.md),

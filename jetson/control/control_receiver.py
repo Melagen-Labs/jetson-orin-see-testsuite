@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_control.py -- DUT-side test-control receiver (arbiter command channel).
+"""control_receiver.py -- DUT-side test-control receiver (arbiter command channel).
 
 The arbiter has a start/stop-test button; its command arrives over Ethernet as a
 JSON message. The arbiter (sender) lives in a teammate's repo -- this implements

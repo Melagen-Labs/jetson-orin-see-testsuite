@@ -26,7 +26,7 @@ then a clean run confirming 0 SEEs). Boards 02–07 are not yet flashed.
 |---|---|
 | [`jetson/compute/cuda_particles/`](jetson/compute/cuda_particles/) — deterministic CUDA workload (primary GPU SEE detector) | ✅ **Built & verified on the Orin Nano** — bit-exact determinism, fault injection + config-driven chaos, ~67 min / 6,064-epoch soak (0 anomalies), golden table committed, schema-v1 logging + SEE counter. |
 | [`jetson/memory/mem_check.py`](jetson/memory/mem_check.py) — DRAM pattern tester | ✅ **Verified.** Deployed **GPU-only** (`mem_check_gpu.service`, CuPy) to minimize CPU load; the CPU variant (2a) stays in the file but its unit is not installed. |
-| [`jetson/control/test_control.py`](jetson/control/test_control.py) — arbiter start/stop receiver (TCP 6000) | ✅ **Deployed & exercised** via the coordinator GUI. Two fixes (config ownership on START, racing-STOP retry) are merged but **not yet confirmed on hardware**. |
+| [`jetson/control/control_receiver.py`](jetson/control/control_receiver.py) — arbiter start/stop receiver (TCP 6000) | ✅ **Deployed & exercised** via the coordinator GUI. Two fixes (config ownership on START, racing-STOP retry) are merged but **not yet confirmed on hardware**. |
 | [`jetson/heartbeat/heartbeat_sender.py`](jetson/heartbeat/heartbeat_sender.py) — DUT UDP heartbeat, 1 Hz | ✅ **Deployed**, verified streaming over Ethernet. Currently the strongest latchup/SEFI signal. |
 | [`jetson/boot_state/`](jetson/boot_state/) — boot-event + uptime loggers | ✅ **Deployed** (loop unit + oneshot, root → `/var/log/radtest/boot_state`). Kernel pstore/ramoops capture is a separate flash-time step ([setup](docs/PSTORE_SETUP.md)). |
 | [`arbiter/`](arbiter/) — correlator, log pull, launcher | ✅ **Proven end-to-end** — `python arbiter/start_arbiter.py` brings up the heartbeat listener, log-pull loop, and GUI in one command. |
@@ -50,7 +50,7 @@ from git history if ever needed.
 | 5 | Current / SEL | 🟠 Ansh and Daniel's, outside this repo | [`power_reader.py`](arbiter/power_reader.py) — parser only, not wired up |
 
 Channel 3b (start/stop control, TCP 6000) is
-[`test_control.py`](jetson/control/test_control.py); the arbiter side is the
+[`control_receiver.py`](jetson/control/control_receiver.py); the arbiter side is the
 coordinator GUI in a teammate's repo.
 
 The arbiter's [`arbiter_main.py`](arbiter/arbiter_main.py) ties the channels
@@ -76,6 +76,8 @@ jetson-orin-see-testsuite/
     INTEGRATION_TEST.md           # first-contact bring-up (reference)
   shared/
     event_log.py                  # schema-v1 emitter/validator (all channels)
+  tests/                          # python -m unittest discover -s tests
+    test_event_log.py             # schema v1: validation, round-trip, rejection
   jetson/                         # runs on the DUT (Jetson Orin Nano)
     compute/
       cuda_particles/             # deterministic CUDA workload (1a, primary)
@@ -84,8 +86,8 @@ jetson-orin-see-testsuite/
       config/mem_check_gpu.json   # GPU-mode run config
       mem_check_gpu.service       # systemd unit (2b)
     control/
-      test_control.py             # arbiter START/STOP receiver, TCP 6000 (3b)
-      test_control.service
+      control_receiver.py         # arbiter START/STOP receiver, TCP 6000 (3b)
+      test_control.service        # unit name kept; runs control_receiver.py
     heartbeat/
       heartbeat_sender.py         # external UDP heartbeat, 1 Hz (3b)
       heartbeat_sender.service
@@ -115,6 +117,12 @@ Run the arbiter and GUI with one command (both repos cloned side by side — see
 
 ```bash
 python arbiter/start_arbiter.py
+```
+
+Run the tests (offline, no DUT, standard library only):
+
+```bash
+python -m unittest discover -s tests -v
 ```
 
 Set up a fresh board:
@@ -151,7 +159,7 @@ actually want them.
   is blocking on it beyond wiring in whatever they deliver.
 - **Boards 02–07** — flash from the `orin-nano-01` master per
   [docs/FLASH_AND_BRINGUP.md](docs/FLASH_AND_BRINGUP.md).
-- **On-hardware confirmation** of the two merged `test_control.py` fixes, on a
+- **On-hardware confirmation** of the two merged `control_receiver.py` fixes, on a
   fresh chaos → clean run.
 - **Kernel/device-tree changes for pstore**, applied at flash time
   ([docs/PSTORE_SETUP.md](docs/PSTORE_SETUP.md)).

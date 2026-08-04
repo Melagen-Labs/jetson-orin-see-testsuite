@@ -13,7 +13,7 @@ Type=simple
 # -- unlike the test channels, the receiver must always be listening so it can
 # act on the very command that arms them. Restart=always keeps it up.
 WorkingDirectory=/home/melagen/see-testsuite/jetson/control
-ExecStart=/usr/bin/python3 /home/melagen/see-testsuite/jetson/control/test_control.py --config /home/melagen/see-testsuite/jetson/control/config/test_control.json
+ExecStart=/usr/bin/python3 /home/melagen/see-testsuite/jetson/control/control_receiver.py --config /home/melagen/see-testsuite/jetson/control/config/test_control.json
 Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=2

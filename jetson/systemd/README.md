@@ -11,7 +11,7 @@ detect (crash vs. stall vs. corruption — see
 |---------------------------------------------|-----------------------------------------|-----------|----------------------------------------------------|
 | `compute/cuda_particles/cuda_particles.service` | `compute/cuda_particles/` (built binary) | simple | deterministic CUDA workload (channel 1a)        |
 | `memory/mem_check_gpu.service`              | `memory/mem_check.py` (`target:"gpu"`)  | simple    | GPU DRAM pattern tester (channel 2b)               |
-| `control/test_control.service`              | `control/test_control.py`               | simple    | arbiter START/STOP receiver, TCP 6000 (channel 3b) |
+| `control/test_control.service`              | `control/control_receiver.py`               | simple    | arbiter START/STOP receiver, TCP 6000 (channel 3b) |
 | `heartbeat/heartbeat_sender.service`        | `heartbeat/heartbeat_sender.py`         | simple    | 1 Hz UDP heartbeat to the arbiter (channel 3b)     |
 | `boot_state/boot_state_logger.service`      | `boot_state/boot_state_logger.py --mode loop` | simple | uptime timeline logger (channel 4)            |
 | `boot_state/boot_state_logger-boot.service` | `boot_state/boot_state_logger.py --mode boot` | oneshot | one boot-event record per power-on (channel 4) |
