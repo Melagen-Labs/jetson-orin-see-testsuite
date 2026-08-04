@@ -11,7 +11,8 @@ the transport changes. Keep the wire format below when wiring the collector up a
 
 Note what is NOT replaced: the retired firmware also provided a **latching power
 cutoff**. Software detection cannot de-power a latched part, so that protection
-does not currently exist in any form.
+does not currently exist in any form. The ``send_recovery_command()`` helper that
+unlatched such a trip was removed on 2026-08-03 -- there is no trip to unlatch.
 
 Importable module. Reads line-delimited JSON and invokes callbacks on every sample
 and specifically on every status transition (the ``NOMINAL -> ABNORMAL ->
@@ -133,21 +134,6 @@ def run_power_reader(port, baud=115200, on_sample=None, on_status_change=None,
 
         if _wait_or_stop(stop_event, reconnect_delay):
             break
-
-
-def send_recovery_command(port, baud=115200, command=b"R\n"):
-    """Send the deliberate, arbiter-issued recovery command to unlatch cutoff.
-
-    Firmware-era helper, retained for whenever an external cutoff exists again.
-    Recovery is never automatic: call this only after your team's
-    cool-down/inspection decision. The exact command byte(s) are part of whatever
-    cutoff contract you adopt; ``b"R\\n"`` is the default here.
-    """
-    if serial is None:
-        raise RuntimeError("pyserial is required: pip install pyserial")
-    with serial.Serial(port, baud, timeout=2.0) as ser:
-        ser.write(command)
-        ser.flush()
 
 
 def main(argv=None) -> int:
