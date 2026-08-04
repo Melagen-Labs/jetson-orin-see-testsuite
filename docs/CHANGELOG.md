@@ -1,17 +1,46 @@
 # Changelog
 
-All notable changes to this repository, newest first. Each entry lists the
-commit, the files touched, and what changed — so a reviewer can go straight to
-the diff. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
+Newest first.
 
-> **Scope note (read before reviewing):** two **project-owned** channels are
-> built and verified on hardware — **`cuda_particles`** (GPU compute, §1a; a
-> project-owned adaptation of **NVIDIA/cuda-samples "particles"**, not NASA code)
-> and **`mem_check.py`** (CPU/system-RAM, §2a). **No changes have been made to
-> the NASA SMRT repo**; SMRT is not vendored (`jetson/vendor/smrt` does not
-> exist) — `mem_check.py` is our own tester using SMRT's method only as a
-> reference. `gpu-burn`, `cuda_memtest`, and `watchdogd` are vendored upstream
-> but unmodified and unbuilt; all other channels remain tentative.
+> **Status (2026-08-03): milestone log, not a per-commit log.** The old rule was
+> an entry for every repository change. That is retired — `git log` already carries
+> commit-level detail, and duplicating it here cost more than it returned. From now
+> on add an entry only for what git *cannot* reconstruct: **what was proven on
+> hardware, when, and on which board**, plus decisions that change how the campaign
+> is run (a channel retired, a threshold approved, an image frozen). In a beam
+> campaign that record is what tells you whether a given run is still valid.
+>
+> Entries below predate this change and are kept as they were.
+>
+> **Scope note:** `cuda_particles` (GPU compute, §1a) is a project-owned adaptation
+> of **NVIDIA/cuda-samples "particles"**, not NASA code. **No changes have been
+> made to the NASA SMRT repo**; SMRT is not vendored — `mem_check.py` is our own
+> tester using SMRT's method only as a reference.
+
+## 2026-08-03
+
+### Decision: channel 5 goes software-only; retired channels removed
+
+Campaign-shaping decisions, recorded because they change what a run means:
+
+- **No new hardware.** The dedicated power-monitor firmware board is dropped.
+  Current sensing is a DUT-side INA3221 collector (owned by Ansh and Daniel), and
+  a latchup is **inferred** on the arbiter from heartbeat loss + an unclean
+  reboot. **Consequence to be explicit about: there is no longer any power cutoff
+  path.** Software can observe a latchup; it cannot de-power a latched part.
+  Deleted `docs/POWER_FIRMWARE_INTERFACE.md` and `firmware/`.
+  `arbiter/power_reader.py` is kept as the ingest parser pending retarget from
+  serial to pulled log records.
+- **Upper-current limit stays unset in code** until derived from a measured no-SEE
+  baseline and approved. The earlier 2300–2400 mA figure is provisional only.
+- **gpu-burn removed** (submodule + `gpu_burn_patch/`) — never built or used;
+  `cuda_particles` is the sole compute detector.
+- **CPU workload removed** (`cpu_sort_check.py` + unit) — the campaign does not
+  stress the CPU.
+- **`arbiter/dashboard/` removed** — never built; the coordinator GUI's live SEE
+  panel covers it.
+- `BUILD_PLAN.md` and `INTEGRATION_TEST.md` demoted to reference; this changelog
+  demoted to a milestone log; `README.md` rewritten to current state.
 
 ## 2026-08-02
 

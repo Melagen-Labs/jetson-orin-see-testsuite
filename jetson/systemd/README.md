@@ -9,17 +9,22 @@ detect (crash vs. stall vs. corruption — see
 
 | Unit file                                   | Source                                  | Type      | Purpose                                            |
 |---------------------------------------------|-----------------------------------------|-----------|----------------------------------------------------|
-| `compute/cpu_sort_check.service`            | `compute/cpu_sort_check.py`             | simple    | CPU checksummed sort workload (channel 1b)         |
+| `compute/cuda_particles/cuda_particles.service` | `compute/cuda_particles/` (built binary) | simple | deterministic CUDA workload (channel 1a)        |
+| `memory/mem_check_gpu.service`              | `memory/mem_check.py` (`target:"gpu"`)  | simple    | GPU DRAM pattern tester (channel 2b)               |
+| `control/test_control.service`              | `control/test_control.py`               | simple    | arbiter START/STOP receiver, TCP 6000 (channel 3b) |
 | `heartbeat/heartbeat_sender.service`        | `heartbeat/heartbeat_sender.py`         | simple    | 1 Hz UDP heartbeat to the arbiter (channel 3b)     |
 | `boot_state/boot_state_logger.service`      | `boot_state/boot_state_logger.py --mode loop` | simple | uptime timeline logger (channel 4)            |
 | `boot_state/boot_state_logger-boot.service` | `boot_state/boot_state_logger.py --mode boot` | oneshot | one boot-event record per power-on (channel 4) |
 
-> The GPU compute workload (`gpu-burn`, channel 1a) and the memory workloads
-> (SMRT + cuda_memtest, channel 2) are built from the vendored submodules on the
-> Jetson; wrap them in their own units the same way once built (see
-> [`../compute/gpu_burn_patch/README.md`](../compute/gpu_burn_patch/README.md)
-> and the memory runbooks). The hardware watchdog (channel 3a) is driven by
-> `watchdogd`, which installs its own unit.
+> These five units are what [`scripts/setup-board.sh`](../../scripts/setup-board.sh)
+> installs. `cuda_particles` and `mem_check_gpu` are ARMED-gated workloads; the
+> other three are always-on monitors. See [`docs/SERVICES.md`](../../docs/SERVICES.md)
+> for the arming model.
+>
+> There is **no CPU workload unit** — the campaign deliberately does not stress the
+> CPU, and `cpu_sort_check.py` was removed on 2026-08-03. `gpu-burn` was removed at
+> the same time. The hardware watchdog (channel 3a) would be driven by `watchdogd`,
+> which is vendored but unbuilt.
 
 ## Install
 
@@ -49,16 +54,11 @@ sudo systemctl enable --now boot_state_logger.service
 sudo systemctl enable --now boot_state_logger-boot.service
 ```
 
-> `cpu_sort_check.service` (CPU workload, channel 1b) is **not deployed** — the
-> campaign is GPU-only to minimize CPU workload (see [`docs/SERVICES.md`](../../docs/SERVICES.md)).
-> Its unit remains in the repo for reference; install it only on a board where you
-> specifically want the CPU channel.
-
 ## Verify
 
 ```bash
-systemctl status cpu_sort_check heartbeat_sender boot_state_logger boot_state_logger-boot
-tail -f /var/log/radtest/compute/cpu_sort.log
+systemctl status cuda_particles mem_check_gpu test_control heartbeat_sender boot_state_logger boot_state_logger-boot
+tail -f /var/log/radtest/compute/compute_log.jsonl
 ```
 
 A unit in `failed` state (rather than `active`) is exactly the signal the

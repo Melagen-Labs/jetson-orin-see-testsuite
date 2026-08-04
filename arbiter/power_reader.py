@@ -1,16 +1,38 @@
 #!/usr/bin/env python3
-"""power_reader.py -- arbiter-side power firmware serial reader (channel 5).
+"""power_reader.py -- arbiter-side current/power stream reader (channel 5).
 
-Importable module. Opens the USB-serial link to the EE's power-monitor firmware,
-reads line-delimited JSON per ``docs/POWER_FIRMWARE_INTERFACE.md``, and invokes
-callbacks on every sample and specifically on every status transition (the
-``NOMINAL -> ABNORMAL -> TRIPPED`` changes the arbiter treats as a candidate
-SEL). Handles the USB-serial link dropping by reconnecting.
+**Status: awaiting retarget.** This was written against a dedicated power-monitor
+firmware board on USB-serial. That approach is retired -- the campaign adds no new
+hardware, so current sensing is the DUT-side INA3221 collector instead, whose
+records reach the arbiter through ``pull_logs.sh`` rather than a serial port. The
+parser and status-transition logic below are still the intended ingest path; only
+the transport changes. Keep the wire format below when wiring the collector up and
+``arbiter_main.py``'s CANDIDATE_SEL escalation keeps working unchanged.
 
-Sample line from firmware::
+Note what is NOT replaced: the retired firmware also provided a **latching power
+cutoff**. Software detection cannot de-power a latched part, so that protection
+does not currently exist in any form.
 
-    {"ts_fw": <int ms>, "current_mA": <number>,
+Importable module. Reads line-delimited JSON and invokes callbacks on every sample
+and specifically on every status transition (the ``NOMINAL -> ABNORMAL ->
+TRIPPED`` changes the arbiter treats as a candidate SEL). Handles the link
+dropping by reconnecting.
+
+Wire format -- one complete JSON object per line, newline-terminated::
+
+    {"ts_fw": <int ms since source boot>, "current_mA": <number>,
      "status": "NOMINAL"|"ABNORMAL"|"TRIPPED"}
+
+Status semantics:
+  * ``NOMINAL``  -- current within bounds.
+  * ``ABNORMAL`` -- over the configured limit, no cutoff engaged; a candidate
+    "persistent abnormal current".
+  * ``TRIPPED``  -- cutoff engaged and latched (the firmware-era meaning). With a
+    software-only monitor this degrades to "limit exceeded", with no cutoff.
+
+The upper-current limit is deliberately **not** hardcoded here. It is set from a
+measured no-SEE baseline and approved before use; until then detection stays
+disabled rather than shipping a provisional number.
 
 Each sample is augmented with ``ts_recv`` (arbiter receipt epoch) before the
 callback. Status-change events::
@@ -116,9 +138,10 @@ def run_power_reader(port, baud=115200, on_sample=None, on_status_change=None,
 def send_recovery_command(port, baud=115200, command=b"R\n"):
     """Send the deliberate, arbiter-issued recovery command to unlatch cutoff.
 
-    Recovery is never automatic (see ``docs/POWER_FIRMWARE_INTERFACE.md``): call
-    this only after your team's cool-down/inspection decision. The exact command
-    byte(s) are part of the firmware contract; ``b"R\\n"`` is the default here.
+    Firmware-era helper, retained for whenever an external cutoff exists again.
+    Recovery is never automatic: call this only after your team's
+    cool-down/inspection decision. The exact command byte(s) are part of whatever
+    cutoff contract you adopt; ``b"R\\n"`` is the default here.
     """
     if serial is None:
         raise RuntimeError("pyserial is required: pip install pyserial")

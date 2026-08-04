@@ -56,4 +56,4 @@ for completeness of "outside code we depend on."
 | Path | What it is | Status |
 |------|-----------|--------|
 | `jetson/compute/cuda_particles/` (+ `third_party/nvidia_common/*.h`) | Project-owned adaptation of NVIDIA `cuda-samples` "particles" plus its helper headers (§1a). | Built + verified on hardware. |
-| `gpu-burn`, `cuda_memtest`, `watchdogd` | Vendored upstream, **unmodified**. | Present but **unbuilt / unused** — kept as references. §2b uses CuPy instead of `cuda_memtest`. |
+| `cuda_memtest`, `watchdogd` | Vendored upstream, **unmodified**. | Present but **unbuilt / unused** — kept as references. §2b uses CuPy instead of `cuda_memtest`. (`gpu-burn` was removed from the repo on 2026-08-03 — never built or used.) |

@@ -1,15 +1,30 @@
-# ⛔ arbiter/ — NOT OWNED BY THIS REPO. DO NOT USE OR DEPLOY.
+# arbiter/ — the arbiter-side host code (in use)
 
-**The arbiter (host) side is a teammate's responsibility, maintained in a
-separate repository. Nothing in this `arbiter/` directory is used, built, or
-deployed by this project.**
+> **This header used to say the directory was unowned scaffolding. That is no
+> longer true** — as of 2026-08-02 the arbiter runs from this repo.
 
-Everything here (`arbiter_main.py`, `heartbeat_listener.py`, `power_reader.py`,
-`pull_logs.sh`, `requirements.txt`, `dashboard/`) is **reference/scaffolding
-only** — an early sketch of what the arbiter might do, kept so the DUT-side
-contracts (event schema, transports, log layout) have something to point at. It
-is **not authoritative** and may be stale or wrong. Do not run it, extend it, or
-treat it as the arbiter implementation.
+Start everything with one command:
+
+```bash
+python arbiter/start_arbiter.py
+```
+
+That brings up the heartbeat listener, the log-pull loop, and the coordinator GUI
+together. Proven end-to-end on 2026-08-02 (chaos run → live SEE panel → results
+CSV, then a clean run confirming 0 SEEs).
+
+**Used:** `start_arbiter.py` (launcher), `heartbeat_listener.py` (UDP 5555 — this
+superseded the deprecated standalone heartbeat repo), `pull_logs.sh` (scp/rsync
+log pull), `arbiter_main.py` (correlator), `requirements.txt`.
+
+**Not used yet:** `power_reader.py` parses a current/status stream, but its serial
+transport is retired along with the power-monitor firmware board; it awaits
+retarget to the pulled INA3221 records. See its module docstring.
+
+**Still a teammate's repo:** the coordinator GUI itself
+(`melagen-test-coordinator`) — start/stop buttons, beam/shielding selection, live
+SEE panel, results CSV. This repo owns the DUT side plus the arbiter plumbing
+above.
 
 ## Who owns what
 

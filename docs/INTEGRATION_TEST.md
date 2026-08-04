@@ -1,5 +1,12 @@
 # Integration test — DUT ↔ arbiter over Ethernet
 
+> **Status: reference / first-contact bring-up.** Largely superseded by
+> [`DRYRUN_PIPELINE_TEST.md`](DRYRUN_PIPELINE_TEST.md), which is the current
+> end-to-end procedure and the one to follow before beam day. Keep using this doc
+> for the *lower* level: proving a brand-new board's link works at all — static
+> IPs, TCP 6000, UDP 5555, and the `radpull` SSH key — which is exactly what
+> boards 02–07 need on first contact.
+
 End-to-end validation of the DUT (Jetson Orin Nano) against the arbiter across a
 direct Ethernet cable. The three DUT↔arbiter interfaces are exercised:
 

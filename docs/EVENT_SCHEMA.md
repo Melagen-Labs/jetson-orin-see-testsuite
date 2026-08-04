@@ -1,14 +1,14 @@
-# Shared event schema (v1) — PROPOSED FREEZE
+# Shared event schema (v1) — FROZEN
 
-> **Status (2026-07-30): proposed, not yet ratified.** This is the Stage 2
-> deliverable from [`BUILD_PLAN.md` §5a](BUILD_PLAN.md). It is ready to freeze,
-> but "frozen" means the team has agreed to it and stopped changing it — that
-> ratification happens at the sync, not here. Until then, treat this as v1-draft.
+> **Status (2026-08-03): frozen and in use.** Every deployed channel emits this
+> schema through [`shared/event_log.py`](../shared/event_log.py), which validates
+> the envelope at runtime, and both the coordinator's live SEE panel and the
+> results CSV parse it. Changing it is a breaking change across three repos —
+> version it rather than editing v1 in place.
 
 Every monitoring channel (compute, memory, heartbeat, boot, power) writes **one
 JSON object per line** (JSONL) using the **same envelope**. The arbiter and the
-[operator dashboard](../arbiter/dashboard/README.md) then need exactly one
-parser instead of five.
+coordinator GUI's live SEE panel then need exactly one parser instead of five.
 
 ## Common envelope (every record, every channel)
 
