@@ -31,41 +31,13 @@ then a clean run confirming 0 SEEs). Boards 02–07 are not yet flashed.
 | [`jetson/boot_state/`](jetson/boot_state/) — boot-event + uptime loggers | ✅ **Deployed** (loop unit + oneshot, root → `/var/log/radtest/boot_state`). Kernel pstore/ramoops capture is a separate flash-time step ([setup](docs/PSTORE_SETUP.md)). |
 | [`arbiter/`](arbiter/) — correlator, log pull, launcher | ✅ **Proven end-to-end** — `python arbiter/start_arbiter.py` brings up the heartbeat listener, log-pull loop, and GUI in one command. |
 | Shared JSONL event schema ([`docs/EVENT_SCHEMA.md`](docs/EVENT_SCHEMA.md)) | ✅ **Frozen (v1)** and enforced at runtime by [`shared/event_log.py`](shared/event_log.py). |
-| Current / SEL detection (channel 5) | 🟠 **The one piece still open**, software-only, owned by Ansh and Daniel. See "Current sensing" below. |
+| Current / SEL detection (channel 5) | 🟠 **Owned by Ansh and Daniel** — tracked outside this repo. |
 | `jetson/vendor/` (`cuda_memtest`, `watchdogd`) | ⚪ Vendored upstream, **unbuilt and unused** — reference only. CuPy superseded `cuda_memtest`. |
 
 **Removed, deliberately:** `gpu-burn` and its patch notes (superseded by
 `cuda_particles`), `cpu_sort_check.py` (the campaign does not stress the CPU), and
-the `firmware/` power-board stub (no new hardware — see below). All recoverable
+the `firmware/` power-board stub (no new hardware this campaign). All recoverable
 from git history if ever needed.
-
-## Current sensing / latchup detection (channel 5)
-
-The dedicated power-monitor firmware board is **retired** — this campaign adds no
-new hardware. Current is sampled on the DUT itself from the module's INA3221 (a
-separate collector tool), and a latchup is **inferred** on the arbiter by
-correlating channels rather than measured by a trip circuit.
-
-The limits are real and worth stating plainly:
-
-- A DUT-side monitor **dies with the board** — the failure it watches for is the
-  one that can silence it.
-- There is **no power cutoff**. Software can observe a latchup; it cannot
-  de-power a latched part.
-- Spikes faster than the sample interval are invisible.
-
-So the working detector is the correlation, not the ammeter: **heartbeat loss +
-an unclean reboot ⇒ likely latchup**, with current evidence attached when
-available and `pstore` supplying the panic dump when the kernel got that far. A
-heartbeat that never returns is the *more* severe case, not a gap in the data.
-
-The upper-current limit is intentionally unset in code until it is derived from a
-measured no-SEE baseline and approved.
-
-**Owned by Ansh and Daniel.** Open work: raise the collector's sample rate and
-`fsync` each record (the last sample before the board dies is the one that
-matters), set the limit from the new baseline, pull the records to the arbiter,
-fold them into the correlator and results CSV, and implement the classifier.
 
 ## Monitoring channels
 
@@ -75,7 +47,7 @@ fold them into the correlator and results CSV, and implement the classifier.
 | 2 | Memory workload | ✅ **[`mem_check.py`](jetson/memory/mem_check.py)** in GPU DRAM mode (2b) | pulled memory logs |
 | 3 | Heartbeat | [`heartbeat_sender.py`](jetson/heartbeat/heartbeat_sender.py) — 1 Hz UDP | [`heartbeat_listener.py`](arbiter/heartbeat_listener.py) |
 | 4 | Boot-state | [`boot_state_logger.py`](jetson/boot_state/boot_state_logger.py) + kernel pstore/ramoops ([setup](docs/PSTORE_SETUP.md)) | pulled boot-state logs + pstore |
-| 5 | Current / SEL | 🟠 DUT-side INA3221 collector (separate tool) | [`power_reader.py`](arbiter/power_reader.py) — ingest pending retarget |
+| 5 | Current / SEL | 🟠 Ansh and Daniel's, outside this repo | [`power_reader.py`](arbiter/power_reader.py) — parser only, not wired up |
 
 Channel 3b (start/stop control, TCP 6000) is
 [`test_control.py`](jetson/control/test_control.py); the arbiter side is the
@@ -83,8 +55,7 @@ coordinator GUI in a teammate's repo.
 
 The arbiter's [`arbiter_main.py`](arbiter/arbiter_main.py) ties the channels
 together and appends every event into one timestamped JSONL correlator file, so
-you can line up "heartbeat lost at T" against "current elevated at T" against
-"reboot logged at T+2s" — which is exactly what the latchup inference depends on.
+you can line up "heartbeat lost at T" against "reboot logged at T+2s".
 
 ## Repository layout
 
@@ -176,7 +147,8 @@ actually want them.
 
 ## What still needs a human
 
-- **Channel 5** — the current/SEL work described above (Ansh and Daniel).
+- **Channel 5** — current/SEL detection is Ansh and Daniel's; nothing in this repo
+  is blocking on it beyond wiring in whatever they deliver.
 - **Boards 02–07** — flash from the `orin-nano-01` master per
   [docs/FLASH_AND_BRINGUP.md](docs/FLASH_AND_BRINGUP.md).
 - **On-hardware confirmation** of the two merged `test_control.py` fixes, on a
