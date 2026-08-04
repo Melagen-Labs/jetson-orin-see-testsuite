@@ -6,7 +6,8 @@ runs on the DUT, the arbiter, and a dev laptop with no extra dependencies.
 
 Every channel (compute, memory, heartbeat, boot, power) should build records
 through `envelope()` + a channel payload and write them with `emit()`, so the
-arbiter and dashboard can rely on one uniform format.
+arbiter, the coordinator's live SEE panel, and the results CSV can all rely on one
+uniform format.
 
 This helper is intentionally dependency-free: `validate()` hand-checks the
 envelope rather than pulling in `jsonschema`. `docs/event_schema.json` is the

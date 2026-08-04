@@ -46,7 +46,7 @@ Tracked in [`arbiter/requirements.txt`](../arbiter/requirements.txt); install wi
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `pyserial` | >=3.5 | USB-serial link to the power-monitor firmware (`arbiter/power_reader.py`, §5). `heartbeat_listener.py` and `arbiter_main.py` use only the standard library. |
+| `pyserial` | >=3.5 | Serial transport in `arbiter/power_reader.py` (§5) — **retired** with the power-monitor firmware board (2026-08-03); kept only so the module imports, and droppable once that module is retargeted to the DUT current collector's pulled logs. `heartbeat_listener.py`, `arbiter_main.py`, and `start_arbiter.py` use only the standard library. |
 
 ## Vendored third-party (in-repo, not downloaded)
 
@@ -56,4 +56,4 @@ for completeness of "outside code we depend on."
 | Path | What it is | Status |
 |------|-----------|--------|
 | `jetson/compute/cuda_particles/` (+ `third_party/nvidia_common/*.h`) | Project-owned adaptation of NVIDIA `cuda-samples` "particles" plus its helper headers (§1a). | Built + verified on hardware. |
-| `gpu-burn`, `cuda_memtest`, `watchdogd` | Vendored upstream, **unmodified**. | Present but **unbuilt / unused** — kept as references. §2b uses CuPy instead of `cuda_memtest`. |
+| `cuda_memtest`, `watchdogd` | Vendored upstream, **unmodified**. | Present but **unbuilt / unused** — kept as references. §2b uses CuPy instead of `cuda_memtest`. (`gpu-burn` was removed from the repo on 2026-08-03 — never built or used.) |

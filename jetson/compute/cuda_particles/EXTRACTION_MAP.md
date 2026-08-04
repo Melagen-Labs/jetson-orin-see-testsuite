@@ -120,9 +120,9 @@ with the shared event schema every channel in this repo uses.
    (process gone) from *corruption* (checksum mismatch logged).
 5. **Signal handling.** Graceful `SIGTERM` → flush logs → exit, so the coordinator /
    watchdogd can stop and restart the workload cleanly.
-6. **`cuda_particles.service`** systemd unit (mirrors the existing
-   `cpu_sort_check.service` pattern in this repo) so a crash shows as `failed` and
-   the workload auto-starts on boot.
+6. **`cuda_particles.service`** systemd unit (the ARMED-gated pattern described in
+   [`docs/SERVICES.md`](../../../docs/SERVICES.md)) so a crash shows as `failed`
+   and the workload auto-starts on boot.
 
 **Open decision (blocks freezing the checksum policy):** bit-exact hash vs.
 numerical tolerance. The stock compare uses `MAX_EPSILON_ERROR = 5.0`,

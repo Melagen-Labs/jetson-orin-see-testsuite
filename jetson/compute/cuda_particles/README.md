@@ -13,7 +13,7 @@ from the `NVIDIA/cuda-samples` particles sample per the repository review
 - [x] Trimmed `CMakeLists.txt` (headless, `CMAKE_CUDA_ARCHITECTURES=87`, GL off) + `cuda_particles.service`
 - [x] **On-target:** built on the Orin Nano, `--generate-golden` produced `data/golden_hashes.txt` (per-board, git-ignored); validated by a ~67 min / 6,064-epoch soak with 0 anomalies
 - [x] **Decision:** checksum/tolerance policy = bit-exact default (0 false positives over the 6M-iteration soak) — see EXTRACTION_MAP §6
-- [ ] Update `docs/BUILD_PLAN.md` §1a: demote gpu-burn to secondary, make cuda_particles the primary GPU compute channel
+- [x] Update `docs/BUILD_PLAN.md` §1a — done 2026-08-03: gpu-burn removed entirely, cuda_particles is the sole GPU compute channel
 
 ## Layout
 ```
@@ -182,7 +182,6 @@ and re-generating `data/golden_hashes.txt` on each board.
 - Physics kernels (`particles_kernel_impl.cuh`) and constants are untouched.
 
 ## Relationship to gpu-burn
-`docs/BUILD_PLAN.md` §1a still treats gpu-burn as the primary GPU compute workload. Per
-the approved re-prioritization, gpu-burn becomes a **secondary** high-intensity stress /
-power profile and this particles workload becomes the primary corruption detector. That
-BUILD_PLAN edit is the last remaining checklist item.
+None — `gpu-burn` was removed from the repo on 2026-08-03. It was never built or
+used, and this workload is the sole GPU compute detector. `docs/BUILD_PLAN.md` §1a
+still describes the old arrangement and is marked historical.

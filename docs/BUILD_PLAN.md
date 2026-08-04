@@ -1,27 +1,34 @@
 # Jetson Orin Nano Proton Beam SEE Test — Software Build Plan
 This is a from-scratch, step-by-step build plan for the five-channel monitoring system, organized to match your table. GPU and CPU are split into two separate builds under the shared "GPU/CPU workload" row, as requested. The power row is written as a firmware/software interface spec for your EE rather than a hardware shopping list, since you already have hardware and don't want to source more.
 
-> **⚠️ Status (2026-07-30) — read before using this plan.** **§1a
-> `cuda_particles` is fully qualified on hardware** (Jetson Orin Nano, CUDA 12.6,
-> SM 8.7): bit-exact determinism, fault-injection detection, a **~67 min /
-> 6,064-epoch soak with 0 anomalies** (6,063,272 iterations, clean SIGTERM stop
-> record), golden table generated on-target and committed
-> (`data/golden_hashes.txt`), **schema-v1 JSONL logging**, a **one-event-per-epoch
-> SEE counter** (JSONL + heartbeat), and a systemd unit aligned to the deployed
-> layout. **§5a's shared event schema is frozen at v1** and `cuda_particles` is
-> the first channel emitting it. **Every other section below (1b, 1c, 2, 3, 4, 5,
-> the §5b dashboard, and the shared arbiter in §0) is tentative and untested** —
-> written to this design but not yet compiled, run, or qualified on the DUT.
-> Build them out in the staged order below, bringing each to the same bar
-> (built → run on DUT → verified) before it is trusted.
+> **⚠️ Status (2026-08-03): HISTORICAL DESIGN REFERENCE — not instructions.**
+> This is the original build plan. It is kept because every other doc cites its
+> channel section numbers (§1a compute, §2b GPU memory, §3b heartbeat/control, §4
+> boot-state, §5 power), and because the per-channel design reasoning is still
+> useful background. **Do not follow it as procedure.** To run a test see
+> [`DRYRUN_PIPELINE_TEST.md`](DRYRUN_PIPELINE_TEST.md); for board rollout see
+> [`FLASH_AND_BRINGUP.md`](FLASH_AND_BRINGUP.md); for current status see the
+> repository [`README.md`](../README.md).
 >
-> **Resolved decisions:** DUT = Jetson Orin Nano (SM 8.7, CUDA 12.6); primary GPU
-> detector = `cuda_particles` (gpu-burn secondary); result policy = **bit-exact**
-> (verified: zero false mismatches over the 6M-iteration soak, so no tolerance
-> mode needed); **shared JSONL schema frozen at v1** (`docs/EVENT_SCHEMA.md`,
-> `docs/event_schema.json`, `shared/event_log.py` reference emitter/validator).
-> Still open: memory budget, recovery policy, input format, and per-repo
-> ownership/deadlines (to be assigned at the 12:00 sync).
+> **Known-stale below, superseded by later decisions:**
+> - **gpu-burn is gone.** Never built or used; `cuda_particles` is the sole compute
+>   detector. Submodule and patch notes removed from the repo.
+> - **No CPU workload.** §1b/§1c are retired — the campaign deliberately does not
+>   stress the CPU. `cpu_sort_check.py` has been removed.
+> - **Memory is GPU-only.** §2b (`mem_check.py` with `target:"gpu"`, CuPy) is
+>   deployed; the §2a CPU tester remains in the file but its unit is not installed.
+> - **§5 power is software-only now.** There is no EE firmware board and no
+>   external cutoff. Current is sampled DUT-side from the INA3221, and a latchup is
+>   *inferred* from heartbeat loss plus an unclean reboot. The firmware interface
+>   spec has been deleted; see the README's "Current sensing" section.
+> - **The §5b operator dashboard was never built** and is not planned — the
+>   coordinator GUI's live SEE panel covers it.
+>
+> **Still accurate:** DUT = Jetson Orin Nano (SM 8.7, CUDA 12.6); result policy =
+> **bit-exact** (zero false mismatches over a 6M-iteration soak); **shared JSONL
+> schema frozen at v1** ([`EVENT_SCHEMA.md`](EVENT_SCHEMA.md), `event_schema.json`,
+> `shared/event_log.py`). Channels 1a, 2b, 3b, and 4 are built, deployed, and
+> verified on hardware.
 ---
 ## 0. Shared architecture (build this first, everything else plugs into it)
 Two machines are involved:

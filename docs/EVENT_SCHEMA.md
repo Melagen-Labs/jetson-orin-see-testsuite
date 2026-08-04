@@ -1,14 +1,14 @@
-# Shared event schema (v1) — PROPOSED FREEZE
+# Shared event schema (v1) — FROZEN
 
-> **Status (2026-07-30): proposed, not yet ratified.** This is the Stage 2
-> deliverable from [`BUILD_PLAN.md` §5a](BUILD_PLAN.md). It is ready to freeze,
-> but "frozen" means the team has agreed to it and stopped changing it — that
-> ratification happens at the sync, not here. Until then, treat this as v1-draft.
+> **Status (2026-08-03): frozen and in use.** Every deployed channel emits this
+> schema through [`shared/event_log.py`](../shared/event_log.py), which validates
+> the envelope at runtime, and both the coordinator's live SEE panel and the
+> results CSV parse it. Changing it is a breaking change across three repos —
+> version it rather than editing v1 in place.
 
 Every monitoring channel (compute, memory, heartbeat, boot, power) writes **one
 JSON object per line** (JSONL) using the **same envelope**. The arbiter and the
-[operator dashboard](../arbiter/dashboard/README.md) then need exactly one
-parser instead of five.
+coordinator GUI's live SEE panel then need exactly one parser instead of five.
 
 ## Common envelope (every record, every channel)
 
@@ -35,7 +35,8 @@ parser instead of five.
   `actual`, `xor`.
 - **heartbeat**: `seq`, `uptime_s`.
 - **boot**: `boot_id`, `uptime_s`, `reboot_count`.
-- **power** (EE firmware, via arbiter): `current_mA`, `tripped` (bool).
+- **power** (DUT current collector, via arbiter): `current_mA`, `tripped` (bool —
+  with a software-only monitor this means "limit exceeded", not a real cutoff).
 
 ## Examples
 
@@ -46,7 +47,7 @@ parser instead of five.
 
 ## Status derivation
 
-`status` is the one field the dashboard colors on. Rule of thumb per channel:
+`status` is the one field the live SEE panel colors on. Rule of thumb per channel:
 `ok` normally; `anomaly` when the channel detects corruption (compute `anomaly`,
 memory mismatch); `tripped` for a power cutoff; `stall`/`crash` are emitted by the
 arbiter/supervisor when a channel's heartbeat freezes or its process dies;
