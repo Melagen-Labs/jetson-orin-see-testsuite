@@ -9,7 +9,6 @@ OPEN — CAMPAIGN READINESS / VERIFY
 [V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
 [V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.
 [V5] ARMED persists across reboots, so compute/memory log against the previous run_id between tests. Decide if acceptable or disarm between campaigns.
-[V6] heartbeat_sender targets 192.168.1.10 (direct cable); board currently has only Wi-Fi/Tailscale, so heartbeats go nowhere during remote dev. Fine for beam config — just expect no heartbeat data now.
 
 OPEN — REMAINING FROM A2
 ------------------------
