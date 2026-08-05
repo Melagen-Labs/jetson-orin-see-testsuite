@@ -923,49 +923,47 @@ class TestCoordinatorApp(ttk.Frame):
     def _on_start_test(self) -> None:
         """Validate, confirm, log and send START_TEST."""
 
-        if (
-            self.coordinator_state
-            != CoordinatorState.IDLE
-        ):
+        if self.coordinator_state != CoordinatorState.IDLE:
             self._append_log(
-                "START_TEST ignored because "
-                "the coordinator is not idle."
+                "START_TEST ignored because the coordinator is not idle."
             )
             return
 
         try:
-            beam_energy = int(
-                self.energy_var.get()
-            )
-            material = self.material_var.get()
-            thickness = int(
-                self.thickness_var.get()
-            )
-            duration_s = int(
-                self.duration_var.get().strip()
-            )
+            beam_energy = int(self.energy_var.get())
+            duration_s = int(self.duration_var.get().strip())
 
-            request = TestRequest.create(
-                beam_energy_mev=beam_energy,
-                shielding_material=material,
-                shielding_thickness_mm=thickness,
-                duration_s=duration_s,
+            request_kwargs = getattr(
+                self,
+                "_start_request_kwargs",
+                None,
             )
+            self._start_request_kwargs = None
+
+            if request_kwargs is None:
+                request = TestRequest.create(
+                    beam_energy_mev=beam_energy,
+                    shielding_material=self.material_var.get(),
+                    shielding_thickness_mm=int(
+                        self.thickness_var.get()
+                    ),
+                    duration_s=duration_s,
+                )
+            else:
+                request = TestRequest.create(
+                    beam_energy_mev=beam_energy,
+                    duration_s=duration_s,
+                    **request_kwargs,
+                )
 
         except (TypeError, ValueError) as error:
-            self.status_var.set(
-                "Invalid configuration"
-            )
-            self._append_log(
-                f"Validation error: {error}"
-            )
-
+            self.status_var.set("Invalid configuration")
+            self._append_log(f"Validation error: {error}")
             self._record_event(
                 "START_TEST_VALIDATION_FAILED",
                 transport=self.transport_mode,
                 error=str(error),
             )
-
             messagebox.showerror(
                 "Invalid Configuration",
                 str(error),
@@ -973,36 +971,44 @@ class TestCoordinatorApp(ttk.Frame):
             )
             return
 
-        confirmation_message = (
-            "Confirm START_TEST\n\n"
-            f"Beam energy: "
-            f"{request.beam_energy_mev} MeV\n"
-            f"Shielding material: "
-            f"{request.shielding_material}\n"
-            f"Shielding thickness: "
-            f"{request.shielding_thickness_mm} mm\n"
-            f"Test duration: "
-            f"{request.duration_s} s\n\n"
-            f"Transport: "
-            f"{self.transport_mode.upper()}\n\n"
-            "Send this command?"
+        confirmation_lines = [
+            "Confirm START_TEST",
+            "",
+            f"Beam energy: {request.beam_energy_mev} MeV",
+            f"Shielding mode: {request.shielding_mode}",
+            f"Shielding material: {request.shielding_material}",
+        ]
+        if request.shielding_reference_mm is not None:
+            confirmation_lines.append(
+                "Reference level: "
+                f"{request.shielding_reference_mm:g} mm"
+            )
+        confirmation_lines.extend(
+            [
+                "Physical thickness: "
+                f"{request.shielding_actual_thickness_mm:g} mm",
+                "Configuration ID: "
+                f"{request.shielding_configuration_id or 'legacy'}",
+                f"Test duration: {request.duration_s} s",
+                "",
+                f"Transport: {self.transport_mode.upper()}",
+                "",
+                "Send this command?",
+            ]
         )
 
         confirmed = messagebox.askyesno(
             "Confirm Start Test",
-            confirmation_message,
+            "\n".join(confirmation_lines),
             parent=self.master,
         )
 
         if not confirmed:
-            self.status_var.set(
-                "START_TEST cancelled"
-            )
+            self.status_var.set("START_TEST cancelled")
             self._append_log(
                 "START_TEST cancelled before "
                 f"submission: {request.request_id}"
             )
-
             self._record_event(
                 "START_TEST_CANCELLED",
                 transport=self.transport_mode,
@@ -1010,9 +1016,7 @@ class TestCoordinatorApp(ttk.Frame):
             )
             return
 
-        self._set_coordinator_state(
-            CoordinatorState.STARTING
-        )
+        self._set_coordinator_state(CoordinatorState.STARTING)
         self.status_var.set(
             "Submitting START_TEST via "
             f"{self.transport_mode}..."
@@ -1028,16 +1032,10 @@ class TestCoordinatorApp(ttk.Frame):
 
             if not event_saved:
                 self.active_test_request_id = None
-
-                self._set_coordinator_state(
-                    CoordinatorState.IDLE
-                )
-
+                self._set_coordinator_state(CoordinatorState.IDLE)
                 self.status_var.set(
-                    "Logging failed - "
-                    "START_TEST not sent"
+                    "Logging failed - START_TEST not sent"
                 )
-
                 messagebox.showerror(
                     "Persistent Logging Failed",
                     "START_TEST was not sent because "
@@ -1046,37 +1044,12 @@ class TestCoordinatorApp(ttk.Frame):
                 )
                 return
 
-            response = self.transport.send(
-                request
-            )
-
-            self._validate_response(
-                request,
-                response,
-            )
-            self._log_exchange(
-                request,
-                response,
-            )
-
-            self.active_test_request_id = (
-                request.request_id
-            )
-
-            self._set_coordinator_state(
-                CoordinatorState.ACTIVE
-            )
-
-            # Mirror the DUT-owned run timer: auto-send STOP after duration_s so the
-            # GUI collects the summary/CSV and returns to IDLE on its own. The DUT
-            # is still the authoritative stop (robust to network blips); this is a
-            # convenience that reuses the normal STOP path.
+            response = self.transport.send(request)
+            self._validate_response(request, response)
+            self._log_exchange(request, response)
+            self.active_test_request_id = request.request_id
+            self._set_coordinator_state(CoordinatorState.ACTIVE)
             self._schedule_auto_stop(request.duration_s)
-
-            # Fresh run: clear the live SEE panel so it shows only THIS run's events.
-            # The tailer tracks new events by byte offset, so this only drops the stale
-            # display from the previous run (otherwise a clean run still shows the prior
-            # run's SEEs, as seen 2026-08-02).
             self._clear_see_panel()
 
             self._record_event(
@@ -1095,8 +1068,7 @@ class TestCoordinatorApp(ttk.Frame):
             messagebox.showinfo(
                 "Start Accepted",
                 "START_TEST was accepted.\n\n"
-                f"Request ID: "
-                f"{request.request_id}\n\n"
+                f"Request ID: {request.request_id}\n\n"
                 f"The test will auto-stop after "
                 f"{request.duration_s} s "
                 "(or press Stop Test).",
@@ -1105,25 +1077,15 @@ class TestCoordinatorApp(ttk.Frame):
 
         except Exception as error:
             self.active_test_request_id = None
-
-            self._set_coordinator_state(
-                CoordinatorState.IDLE
-            )
-
-            self.status_var.set(
-                "START_TEST failed"
-            )
-            self._append_log(
-                f"START_TEST error: {error}"
-            )
-
+            self._set_coordinator_state(CoordinatorState.IDLE)
+            self.status_var.set("START_TEST failed")
+            self._append_log(f"START_TEST error: {error}")
             self._record_event(
                 "START_TEST_FAILED",
                 transport=self.transport_mode,
                 request_id=request.request_id,
                 error=str(error),
             )
-
             messagebox.showerror(
                 "Start Failed",
                 str(error),

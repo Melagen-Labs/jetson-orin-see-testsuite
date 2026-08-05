@@ -175,6 +175,28 @@ def apply_campaign_ui(app: Any) -> None:
     original_on_stop_test = app._on_stop_test
     original_save_result_csv = app._save_result_csv
 
+    button_frame = _find_grid_child(
+        app,
+        8,
+        ttk.Frame,
+    )
+    if button_frame is None:
+        raise RuntimeError(
+            "Could not find the Start/Stop button frame"
+        )
+
+    edit_custom_button = ttk.Button(
+        button_frame,
+        text="Edit Custom Value",
+        width=18,
+        state="disabled",
+    )
+    edit_custom_button.grid(
+        row=0,
+        column=2,
+        padx=(8, 0),
+    )
+
     def comments() -> str:
         return comments_text.get("1.0", "end-1c").strip()
 
@@ -211,6 +233,11 @@ def apply_campaign_ui(app: Any) -> None:
             "Enter the physical thickness in millimetres:",
             parent=app.master,
             minvalue=0.000001,
+            initialvalue=(
+                app.material_custom_thicknesses.get(
+                    CUSTOM_OPTION
+                )
+            ),
         )
         if thickness is None:
             return False
@@ -232,6 +259,43 @@ def apply_campaign_ui(app: Any) -> None:
         app.material_custom_thicknesses[material] = float(value)
         return True
 
+    def edit_custom_value() -> None:
+        material = app.material_var.get()
+        selection = app.thickness_var.get()
+
+        if material == CUSTOM_OPTION:
+            changed = prompt_custom_shield()
+
+        elif (
+            material in {
+                "MLC1",
+                "MLC2",
+                "Aluminium",
+            }
+            and selection == CUSTOM_OPTION
+        ):
+            changed = prompt_material_thickness(
+                material
+            )
+
+        else:
+            messagebox.showinfo(
+                "No Custom Value Selected",
+                "Select Custom... as the shielding "
+                "material or thickness first.",
+                parent=app.master,
+            )
+            return
+
+        if changed:
+            app._update_summary()
+
+        app._apply_control_state()
+
+    edit_custom_button.configure(
+        command=edit_custom_value
+    )
+
     def material_changed(*_args: Any) -> None:
         material = app.material_var.get()
         if material == CUSTOM_OPTION:
@@ -251,6 +315,7 @@ def apply_campaign_ui(app: Any) -> None:
             if not prompt_material_thickness(material):
                 app.thickness_var.set("12")
         app._update_summary()
+        app._apply_control_state()
 
     def shield_data() -> tuple[str, float, bool]:
         material = app.material_var.get()
@@ -371,28 +436,87 @@ def apply_campaign_ui(app: Any) -> None:
             state="normal" if self.coordinator_state.value == "active" and self._beam_on_started_at is not None else "disabled"
         )
 
+        custom_value_selected = (
+            idle
+            and (
+                self.material_var.get()
+                == CUSTOM_OPTION
+                or (
+                    self.material_var.get()
+                    in {
+                        "MLC1",
+                        "MLC2",
+                        "Aluminium",
+                    }
+                    and self.thickness_var.get()
+                    == CUSTOM_OPTION
+                )
+            )
+        )
+
+        edit_custom_button.configure(
+            state=(
+                "normal"
+                if custom_value_selected
+                else "disabled"
+            )
+        )
+
     def campaign_on_start_test(self: Any) -> None:
         try:
             material, thickness, custom_value = shield_data()
             flux = selected_flux()
         except (TypeError, ValueError) as error:
-            messagebox.showerror("Invalid Campaign Configuration", str(error), parent=self.master)
-            return
-
-        if custom_value:
-            messagebox.showinfo(
-                "Custom Value Preview",
-                "Custom shield or thickness values are saved as coordinator metadata, "
-                "but START_TEST is blocked until the Jetson receiver protocol supports them.",
+            messagebox.showerror(
+                "Invalid Campaign Configuration",
+                str(error),
                 parent=self.master,
             )
             return
+
+        if custom_value:
+            shielding_mode = "custom"
+            reference_mm = None
+            actual_thickness_mm = float(thickness)
+            transmitted_thickness_mm = actual_thickness_mm
+            configuration_id = "CUSTOM"
+            shield_review = (
+                f"Shield: {material}, custom physical "
+                f"{actual_thickness_mm:g} mm"
+            )
+        elif material == "Bare":
+            configuration = get_shield_configuration("Bare", 0)
+            shielding_mode = "preset"
+            reference_mm = 0
+            actual_thickness_mm = float(
+                configuration.actual_thickness_mm
+            )
+            transmitted_thickness_mm = 0
+            configuration_id = configuration.configuration_id
+            shield_review = "Shield: Bare control, 0.00 mm"
+        else:
+            reference_mm = int(thickness)
+            configuration = get_shield_configuration(
+                material,
+                reference_mm,
+            )
+            shielding_mode = "preset"
+            actual_thickness_mm = float(
+                configuration.actual_thickness_mm
+            )
+            transmitted_thickness_mm = reference_mm
+            configuration_id = configuration.configuration_id
+            shield_review = (
+                f"Shield: {material}, reference "
+                f"{reference_mm:g} mm -> physical "
+                f"{actual_thickness_mm:.2f} mm"
+            )
 
         notes = comments()
         review = [
             f"DUT: {effective_dut()}",
             f"Energy: {self.energy_var.get()} MeV",
-            f"Shield: {material}" + ("" if material == "Bare" else f", {thickness:g} mm"),
+            shield_review,
             f"Flux: {format_scientific(flux)} p/cm²/s",
         ]
         serial = self.dut_serial_var.get().strip()
@@ -400,16 +524,12 @@ def apply_campaign_ui(app: Any) -> None:
             review.append(f"Serial: {serial}")
         if notes:
             review.append(f"Comments: {notes}")
-        if not messagebox.askokcancel("Review Test Configuration", "\n".join(review), parent=self.master):
+        if not messagebox.askokcancel(
+            "Review Test Configuration",
+            "\n".join(review),
+            parent=self.master,
+        ):
             return
-
-        # Protocol v1 accepts only integer preset thicknesses.
-        if material == "Bare":
-            self.material_var.set("Bare")
-            self.thickness_var.set("0")
-        else:
-            self.material_var.set(material)
-            self.thickness_var.set(str(int(thickness)))
 
         self.campaign_selected_flux = flux
         self.campaign_beam_seconds = 0.0
@@ -422,9 +542,24 @@ def apply_campaign_ui(app: Any) -> None:
             "operator_comments": notes,
             "flux_p_cm2_s": flux,
             "shield_material": material,
-            "shield_thickness_mm": thickness,
+            "shield_mode": shielding_mode,
+            "shield_reference_level": reference_mm,
+            "shield_physical_thickness_mm": actual_thickness_mm,
+            "shield_custom_value": custom_value,
+            "shield_configuration_id": configuration_id,
         }
+        self._start_request_kwargs = {
+            "shielding_mode": shielding_mode,
+            "shielding_material": material,
+            "shielding_thickness_mm": transmitted_thickness_mm,
+            "shielding_reference_mm": reference_mm,
+            "shielding_actual_thickness_mm": actual_thickness_mm,
+            "shielding_configuration_id": configuration_id,
+            "campaign_metadata": dict(self.campaign_run_metadata),
+        }
+
         original_on_start_test()
+
         if self.coordinator_state.value == "active":
             self._record_event(
                 "CAMPAIGN_RUN_METADATA",
