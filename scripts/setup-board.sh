@@ -148,6 +148,17 @@ sudo systemctl daemon-reload                         # re-read unit files
 sudo systemctl enable --now cuda_particles.service mem_check_gpu.service test_control.service \
                             heartbeat_sender.service boot_state_logger.service boot_state_logger-boot.service
 
+# Channel-4 pstore: L4T ships a working ramoops carveout (see docs/PSTORE_SETUP.md),
+# and its panic records are world-readable (0444) -- but the /sys/fs/pstore
+# DIRECTORY is 0750 root:root, which blocks the arbiter's radpull user from
+# pulling them. Open the directory to 0755 now and on every boot (tmpfiles rule).
+echo "      open /sys/fs/pstore to the radpull log-pull user"
+sudo tee /etc/tmpfiles.d/radtest-pstore.conf >/dev/null <<'EOF'
+# radtest: let the radpull log-pull user traverse pstore (files are already 0444)
+z /sys/fs/pstore 0755 root root -
+EOF
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/radtest-pstore.conf
+
 echo "done -- status:"
 systemctl status cuda_particles.service mem_check_gpu.service test_control.service \
                  heartbeat_sender.service boot_state_logger.service boot_state_logger-boot.service \

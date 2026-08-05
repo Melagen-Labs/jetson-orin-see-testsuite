@@ -4,7 +4,6 @@ Closed system on a private tailnet; minor security laxity is acceptable for now.
 
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
-[V1] pstore/ramoops looks unconfigured (pstore mounted but empty, no ramoops in device tree) — channel 4's crash evidence is missing until the PSTORE_SETUP.md flash-time step is done.
 [V2] Watchdog armed at 2 min, but CRASH_RECOVERY.md expects ~10 s. Confirm intended or tighten.
 [V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
 [V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.
@@ -16,6 +15,7 @@ OPEN — REMAINING FROM A2
 
 COMPLETED 2026-08-05 (Claude, via SSH; everything deleted was first archived to nano-archive\nano-declutter-20260805.tar.gz)
 --------------------
+[V1] Resolved — original finding was partly a verification error (permission-masked ls read as "empty"; DT grep missed reserved-memory/). L4T ships a working ramoops carveout; sysrq-c panic test (user-approved) proved it: dmesg-ramoops-0 "Panic#1" + console-ramoops-0 present after auto-reboot. Fixed the real gap: /sys/fs/pstore dir was 0750 root-only — tmpfiles rule (0755) installed on the board and added to setup-board.sh; radpull read verified. PSTORE_SETUP.md rewritten to Orin reality. Caveat: records survive panic/warm reboot/watchdog reset but NOT a cold power cycle.
 [A1] Deleted stale pre-git copies ~/cuda_particles, ~/mem_check, ~/heartbeat.
 [A2-partial] Deleted 3 current-baseline backup dirs + 2 deploy zips from $HOME (commit/push still owed — see OPEN).
 [A3] Deleted ~/custom-shield-test-backup-20260805_001410 and ~/see-testsuite-local-before-dryrun.patch.
