@@ -1,0 +1,27 @@
+ISSUE TRACKER — orin-nano-01 audit, 2026-08-05
+==============================================
+Closed system on a private tailnet; minor security laxity is acceptable for now.
+
+OPEN — CAMPAIGN READINESS / VERIFY
+----------------------------------
+[V1] pstore/ramoops looks unconfigured (pstore mounted but empty, no ramoops in device tree) — channel 4's crash evidence is missing until the PSTORE_SETUP.md flash-time step is done.
+[V2] Watchdog armed at 2 min, but CRASH_RECOVERY.md expects ~10 s. Confirm intended or tighten.
+[V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
+[V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.
+[V5] ARMED persists across reboots, so compute/memory log against the previous run_id between tests. Decide if acceptable or disarm between campaigns.
+[V6] heartbeat_sender targets 192.168.1.10 (direct cable); board currently has only Wi-Fi/Tailscale, so heartbeats go nowhere during remote dev. Fine for beam config — just expect no heartbeat data now.
+
+OPEN — REMAINING FROM A2
+------------------------
+[A2] Deployed channel-5 state is now COMMITTED on-board (branch deployed-orin-nano-01-20260805, commit 5153b37, 30 files; board stays on this branch) and exported to nano-archive\ch5-deployed-20260805.bundle — but the board has no push credentials, so an owner still needs to push the branch to GitHub (e.g. git pull the bundle and push from their machine).
+
+COMPLETED 2026-08-05 (Claude, via SSH; everything deleted was first archived to nano-archive\nano-declutter-20260805.tar.gz)
+--------------------
+[A1] Deleted stale pre-git copies ~/cuda_particles, ~/mem_check, ~/heartbeat.
+[A2-partial] Deleted 3 current-baseline backup dirs + 2 deploy zips from $HOME (commit/push still owed — see OPEN).
+[A3] Deleted ~/custom-shield-test-backup-20260805_001410 and ~/see-testsuite-local-before-dryrun.patch.
+[A4] Removed disabled /etc/systemd/system/mem_check.service; daemon-reloaded.
+[A5] Deleted ~/radtest-test-artifacts (failed-run data preserved in archive).
+[A6] Deleted junk file ~/1.
+[A7] Channel-5 service logs now append to /var/log/radtest/power/ (edited installed units + repo systemd/ sources, moved old logs, restarted both services — active and writing). Follow-up per feedback: power/ added to pull_logs.sh's channel loop (with nested per-run_id handling for the scp fallback), and power/ ownership fixed to melagen:radlog 2750 — radpull read access verified.
+[S1] Deleted the "udo nmcli … password …" file (contents were just an nmcli scan capture — nothing lost).
