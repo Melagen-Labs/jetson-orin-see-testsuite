@@ -6,8 +6,9 @@
   "protocol_version": 1,
   "supported_commands": ["START_TEST", "STOP_TEST"],
   "beam_energies_mev": [50, 63, 125, 200],
-  "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
-  "shielding_thicknesses_mm": [8, 12, 16],
+  "shielding_modes": ["preset", "custom"],
+  "shielding_materials": ["Bare", "Aluminium", "MLC1", "MLC2"],
+  "shielding_thicknesses_mm": [0, 8, 12, 16],
 
   "control_log": "./logs/test_control.jsonl",
 
