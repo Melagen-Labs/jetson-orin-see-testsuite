@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Local configuration and credentials
+.env
+.env.*
+config.json
+
+# Runtime logs
+*.log
+*.jsonl
+logs/*
+!logs/.gitkeep
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors
+.vscode/
+.idea/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+# Arbiter-side runtime data: logs pulled from the DUT, and per-run results.
+arbiter_logs/
+results/

@@ -1,0 +1,16 @@
+field,value
+run_id,6ccc9bc0-2216-4ba8-855e-4ee420fc87ba
+beam_energy,100MeV
+shield_config,MLC1_12mm
+duration_s,68.107
+total_sees,0
+sees_per_s,0.0
+
+see_type,label,count
+cuda_anomaly,CUDA sim: value out of bounds,0
+cuda_golden_mismatch,CUDA sim: golden-hash mismatch,0
+cuda_nonfinite,CUDA sim: NaN/Inf output,0
+cuda_shutdown,CUDA sim: shut down / restarted,0
+fatal_error,Fatal error record,0
+gpu_mem_upset,GPU RAM tester: bit upset,0
+mem_tester_restart,GPU RAM tester: shut down / restarted,0
