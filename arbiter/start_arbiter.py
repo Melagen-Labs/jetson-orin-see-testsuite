@@ -13,14 +13,13 @@ It starts, in order:
      feeds the GUI's live SEE panel; scp ships with Windows OpenSSH -- no rsync),
   3. the coordinator GUI (app_local_tcp.py) in the foreground.
 
-Layout it assumes (all clones side-by-side in one folder), e.g.:
+Everything lives in this one repo: the GUI was imported to `arbiter/coordinator/`
+on 2026-08-06 (previously a separate `melagen-test-coordinator` clone that had to
+sit beside this one). One clone, one `git pull`, one version of the DUT<->arbiter
+contract -- the skew between the two repos was a live source of bugs.
 
-    radtest-arbiter/
-      jetson-orin-see-testsuite/   <- this repo (has this launcher + the listener)
-      melagen-test-coordinator/    <- the GUI (app_local_tcp.py)
-
-If the coordinator repo is somewhere else, pass --coordinator-dir. Closing the GUI
-stops the pull loop; close the heartbeat window yourself.
+Pass --coordinator-dir only to run against a different checkout of the GUI.
+Closing the GUI stops the pull loop; close the heartbeat window yourself.
 """
 import argparse
 import os
@@ -32,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))          # <base>/jetson-orin-
 DUT_REPO = os.path.dirname(HERE)                            # jetson-orin-see-testsuite
 BASE = os.path.dirname(DUT_REPO)                            # parent folder holding the sibling repos
 HB_LISTENER = os.path.join(HERE, "heartbeat_listener.py")  # this repo's own listener
-DEFAULT_COORD = os.path.join(BASE, "melagen-test-coordinator")
+DEFAULT_COORD = os.path.join(HERE, "coordinator")          # the GUI, in-repo since 2026-08-06
 DUT_LOG_DIR = "/var/log/radtest"
 
 
@@ -70,7 +69,7 @@ def main():
     ap.add_argument("--host", default="192.168.1.20",
                     help="DUT address (default: the direct-cable 192.168.1.20).")
     ap.add_argument("--coordinator-dir", default=DEFAULT_COORD,
-                    help="Path to the melagen-test-coordinator repo (default: sibling of this repo).")
+                    help="Path to the coordinator GUI (default: arbiter/coordinator, in-repo).")
     ap.add_argument("--dut-user", default="radpull", help="Low-priv log-pull user.")
     ap.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_ed25519"),
                     help="SSH private key authorized for radpull on the DUT.")
@@ -81,7 +80,8 @@ def main():
     logs = os.path.join(args.coordinator_dir, "arbiter_logs")
     if not os.path.isfile(gui):
         sys.exit(f"[arbiter] can't find the GUI at {gui}\n"
-                 f"          clone melagen-test-coordinator beside this repo, or pass --coordinator-dir.")
+                 f"          it ships in this repo at arbiter/coordinator -- try `git pull`, "
+                 f"or pass --coordinator-dir.")
     if not os.path.isfile(HB_LISTENER):
         sys.exit(f"[arbiter] can't find the heartbeat listener at {HB_LISTENER}")
     os.makedirs(logs, exist_ok=True)

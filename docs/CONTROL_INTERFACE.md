@@ -135,8 +135,9 @@ already stopped — `systemctl stop` is idempotent. The coordinator schedules it
 STOP at the same `duration_s` purely to retrieve that summary and write `test_N.csv`;
 the DUT timer is the authoritative stop.
 
-> **Note:** the arbiter host code is a teammate's, in a separate repo — this repo
-> owns only the DUT receiver. See [`arbiter/README.md`](../arbiter/README.md).
+> **Note:** the sender is the coordinator GUI, which since 2026-08-06 lives in
+> this repo at [`arbiter/coordinator/`](../arbiter/coordinator/) — so both halves
+> of this contract change in one commit. See [`arbiter/README.md`](../arbiter/README.md).
 
 ## STOP_TEST — our forward-compatible extension
 

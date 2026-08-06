@@ -103,6 +103,7 @@ jetson-orin-see-testsuite/
     vendor/                       # third-party reference tools (unbuilt)
     systemd/                      # DUT unit install guide
   arbiter/                        # runs on the arbiter PC (outside the beam)
+    coordinator/                  # the operator GUI (imported from melagen-test-coordinator, 2026-08-06)
     start_arbiter.py              # one-command launcher (listener + pull + GUI)
     arbiter_main.py               # correlator: heartbeat + current + log pulls
     heartbeat_listener.py

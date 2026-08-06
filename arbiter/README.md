@@ -21,17 +21,32 @@ log pull), `arbiter_main.py` (correlator), `requirements.txt`.
 transport is retired along with the power-monitor firmware board; it awaits
 retarget to the pulled INA3221 records. See its module docstring.
 
-**Still a teammate's repo:** the coordinator GUI itself
-(`melagen-test-coordinator`) — start/stop buttons, beam/shielding selection, live
-SEE panel, results CSV. This repo owns the DUT side plus the arbiter plumbing
-above.
+**The coordinator GUI now lives here too**, at [`coordinator/`](coordinator/) —
+start/stop/baseline buttons, beam/shielding selection, live SEE panel, results
+CSV. It was imported from `melagen-test-coordinator` on **2026-08-06** with its
+history intact (`git subtree`), because running the two halves of one wire
+contract out of two repos kept producing version skew: a DUT rejecting a command
+the GUI had already learned to send, a clone silently commits behind.
+
+Its own test suite runs from that directory:
+
+```bash
+cd arbiter/coordinator && PYTHONPATH=. python -m unittest discover -s tests -t tests
+```
+
+To pull in later upstream work (or push ours back), the subtree remote is:
+
+```bash
+git subtree pull --prefix=arbiter/coordinator <coordinator-remote> main
+```
 
 ## Who owns what
 
 | Side | Owner | Where |
 |---|---|---|
 | **DUT** (Jetson Orin Nano test channels, control receiver, heartbeat sender) | **this repo** | `jetson/`, `shared/`, `scripts/`, `docs/` |
-| **Arbiter** (host: command sender, listeners, log pull, dashboard) | **teammate (Ansh)** | *separate repo* |
+| **Arbiter** (host: command sender, listeners, log pull, GUI) | **this repo** | `arbiter/` |
+| **Beam-run current / SEL detection** (channel-5 telemetry, spike classification) | **Ansh and Daniel** | their `feature/power-monitor` branch |
 
 ## The DUT↔arbiter contracts we DO own (implement/uphold on our side)
 

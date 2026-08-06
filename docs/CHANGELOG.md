@@ -19,6 +19,27 @@ Newest first.
 
 ## 2026-08-06
 
+### Decision: the coordinator GUI moves into this repo
+
+`melagen-test-coordinator` is now `arbiter/coordinator/`, imported with `git
+subtree` so its history and authorship survive. The reason is concrete, not
+tidiness: the GUI and the DUT receiver implement two halves of one wire contract,
+and keeping them in separate repos produced version skew twice in one afternoon —
+a DUT rejecting `BASELINE_TEST` because it was running yesterday's receiver, and a
+GUI clone sitting 5 commits behind its own remote. One repo means one `git pull`
+and one version of the contract.
+
+- Base is `Melagen-Labs/melagen-test-coordinator@a347c60` (identical to
+  `madhavsharma01312003/main` — the org transfer, not a fork), with the Baseline
+  Test button merged on top. 101 coordinator tests + 51 DUT tests pass.
+- `start_arbiter.py` now defaults to the in-repo GUI; no more side-by-side clones.
+- **Not folded in:** the unmerged `feature/power-monitor` branch (+3,435 lines:
+  `power_monitor.py`, telemetry protocol, power UI, ADR). It reads the **same
+  INA3221 rail** as our baseline sampler, so the two overlap by mechanism and
+  need reconciling with Ansh and Daniel before either is deployed for beam runs.
+  Its own docs say its thresholds must be replaced after a measured baseline —
+  which is exactly what `BASELINE_TEST` produces.
+
 ### Capability: baselines are now a button, and this repo owns a current sampler
 
 A baseline current run was previously a manual capture with a collector that lives
