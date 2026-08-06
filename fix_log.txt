@@ -2,8 +2,19 @@ ISSUE TRACKER — orin-nano-01 audit, 2026-08-05
 ==============================================
 Closed system on a private tailnet; minor security laxity is acceptable for now.
 
+FLEET STATUS 2026-08-06 ~17:00: board 02 fully updated (repo f60c1ed, channel 5,
+own identity/golden/keys, pstore rule) and captured as THE FLEET IMAGE
+(tools/backup_restore/images/, native X.1 + 256GB geometry, SHA256-sealed).
+Boards 03-07 rollout = recovery mode -> l4t_backup_restore -r -> setup-board.sh 0N
+-> tailscale enroll. Flash laptop migrated: OS now on the SanDisk (sda3, PNY
+retired as backup stick holding image-set insurance copies). Heartbeat listener
+aligned with upstream (durable JSONL logging). STILL OPEN BEFORE FREEZE:
+V2 watchdog decision (board 02 carries inherited 2min — decide + re-capture or
+patch per-board), A2 channel-5 GitHub push, V3/V4 doc truth-ups, V5 run_id policy.
+
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
+[V7-RESOLVED 2026-08-06 ~03:45] Board 02 FLASHED AND VALIDATED: l4t_initrd_flash path (fresh 256GB GPT + QSPI + master rootfs) succeeded after fixing two baked-in config bugs found via initrd-shell diagnosis: (1) extlinux had the master's stale root=PARTUUID prepended to the tool's appended correct one (removed; staging fixed so future flashes bake clean), (2) fstab demanded the master's old ESP UUID -> 90s timeout -> emergency mode = the "silent board" (fixed on-disk + nofail; staging too). First boot: SSD root confirmed, systemd "running", all 5 services active, Tailscale identity reset per manual §3. Remaining fleet steps: update board 02 (repo main + channel 5 + V2 watchdog decision), setup-board.sh 02, Tailscale enroll, §4 validation, then BACK UP board 02 as the 256GB fleet image for boards 03-07. Flash package is complete so --flash-only reruns are available. Original V7 text follows.
 [V7] FLEET BLOCKER (found 2026-08-06 during pathfinder): master has a 512GB SSD but board 02 has 256GB — raw l4t_backup_restore images encode 512GB geometry (475GiB rootfs partition) and cannot restore onto smaller disks; partprobe rejects the GPT. The W→X spec edit worked (gate passed); size is the real blocker. DECIDED (Shiven, 2026-08-06): boards 02-07 are all 256GB. Plan: flash board 02 via l4t_initrd_flash (fresh 256GB layout + QSPI + master rootfs content), bring it fully up to date (repo main, channel 5, watchdog decision, setup-board.sh 02, validation), then BACK UP board 02 -> new 256GB-geometry image set on JETSON_BACKUP = the fleet master image for boards 03-07. Master 01 (512GB) stays content-identical dev/reference; fleet 02-07 bit-identical to each other.
 [V2] Watchdog armed at 2 min, but CRASH_RECOVERY.md expects ~10 s. Confirm intended or tighten.
 [V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
