@@ -194,6 +194,55 @@ class CurrentLoggerLifecycleTests(unittest.TestCase):
         self.assertIsNone(info)
 
 
+class StopRaceTests(unittest.TestCase):
+    """Two stops racing must still stop the services.
+
+    Regression for 2026-08-06 on orin-nano-01: the DUT-owned auto-stop and the
+    coordinator's mirror STOP fire at the same duration_s, so both disarm at once.
+    The loser's os.remove hit ENOENT, the exception escaped before `systemctl stop`
+    ran, and mem_check_gpu was left running while the reply said the channel had
+    failed to stop -- the operator had to stop it by hand.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.calls = []
+
+        self.cfg = cr.load_config(None)
+        self.cfg["channels"] = [{
+            "name": "memory_gpu",
+            "config": os.path.join(self.tmp.name, "cfg.json"),
+            "armed_flag": os.path.join(self.tmp.name, "ARMED"),
+            "service": "mem_check_gpu.service",
+            "log": os.path.join(self.tmp.name, "mem.jsonl"),
+        }]
+
+        # systemctl does not exist off the DUT; record the calls instead.
+        real = cr.systemctl
+        self.addCleanup(setattr, cr, "systemctl", real)
+        cr.systemctl = lambda action, service, cfg: (
+            self.calls.append((action, service)) or (True, "%s ok" % action))
+
+    def test_stop_succeeds_when_the_flag_is_already_gone(self):
+        # No ARMED file at all == the other stop already won the race.
+        results = cr.do_stop(self.cfg)
+
+        self.assertEqual(self.calls, [("stop", "mem_check_gpu.service")],
+                         "the service must be stopped even when disarm found nothing")
+        self.assertTrue(results[0]["ok"], results[0])
+
+    def test_stop_disarms_and_stops_when_the_flag_is_present(self):
+        flag = self.cfg["channels"][0]["armed_flag"]
+        open(flag, "w").close()
+
+        results = cr.do_stop(self.cfg)
+
+        self.assertFalse(os.path.exists(flag), "ARMED must be removed")
+        self.assertEqual(self.calls, [("stop", "mem_check_gpu.service")])
+        self.assertTrue(results[0]["ok"], results[0])
+
+
 class ConfigFileTests(unittest.TestCase):
     """The shipped config must actually enable what the code expects."""
 

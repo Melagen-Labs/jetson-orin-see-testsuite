@@ -499,9 +499,21 @@ def do_stop(cfg):
     results = []
     for ch in cfg["channels"]:
         r = {"name": ch["name"], "service": ch["service"]}
+        note = ""
+        # Disarm first, but NEVER let it prevent the stop below. Two stops racing
+        # is the normal case, not an edge case: the DUT-owned timer and the
+        # coordinator's mirror STOP are scheduled at the same duration_s, so both
+        # reach here within milliseconds of each other. An `exists()` check does
+        # not help -- the loser still hits ENOENT on remove. Observed 2026-08-06:
+        # that exception escaped before `systemctl stop` ran, so mem_check_gpu was
+        # left running while the reply claimed the channel had failed to stop.
         try:
-            if os.path.exists(ch["armed_flag"]):
-                os.remove(ch["armed_flag"])           # rm ARMED so a reboot won't restart it
+            os.remove(ch["armed_flag"])               # rm ARMED so a reboot won't restart it
+        except FileNotFoundError:
+            pass                                      # already disarmed == success
+        except OSError as exc:                        # noqa: BLE001
+            note = " (disarm failed: %s)" % exc       # reported, but the stop goes on
+        try:
             # A STOP arriving right after START can race the unit's own (re)start
             # transition, so the first `systemctl stop` occasionally returns non-zero
             # ("failed to stop") while the unit settles (observed 2026-08-02; a manual
@@ -514,9 +526,9 @@ def do_stop(cfg):
                 attempts += 1
             if attempts > 1:
                 detail = "%s (after %d attempts)" % (detail, attempts)
-            r["ok"], r["detail"] = ok, detail
+            r["ok"], r["detail"] = ok, detail + note
         except Exception as exc:                      # noqa: BLE001
-            r["ok"], r["detail"] = False, "disarm/stop error: %s" % exc
+            r["ok"], r["detail"] = False, "stop error: %s%s" % (exc, note)
         results.append(r)
     return results
 
