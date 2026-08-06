@@ -30,3 +30,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+# Arbiter-side runtime data: logs pulled from the DUT, and per-run results.
+arbiter_logs/
+results/

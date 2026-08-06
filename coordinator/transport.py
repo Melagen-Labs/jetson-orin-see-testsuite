@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from coordinator.request import (
+    BaselineTestRequest,
     StopTestRequest,
     TestRequest,
 )
@@ -16,7 +17,7 @@ from coordinator.request import (
 
 MAX_RESPONSE_BYTES = 65_536
 
-RequestType = TestRequest | StopTestRequest
+RequestType = TestRequest | BaselineTestRequest | StopTestRequest
 
 
 def utc_timestamp() -> str:
@@ -36,11 +37,11 @@ def validate_request_type(
 
     if not isinstance(
         request,
-        (TestRequest, StopTestRequest),
+        (TestRequest, BaselineTestRequest, StopTestRequest),
     ):
         raise TypeError(
-            "request must be a TestRequest "
-            "or StopTestRequest"
+            "request must be a TestRequest, "
+            "BaselineTestRequest or StopTestRequest"
         )
 
 

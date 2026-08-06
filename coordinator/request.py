@@ -8,8 +8,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from coordinator.constants import (
+    BASELINE_TEST_COMMAND,
     BEAM_ENERGIES_MEV,
+    DEFAULT_BASELINE_MINUTES,
     DEFAULT_DURATION_S,
+    MAX_BASELINE_MINUTES,
     MAX_DURATION_S,
     PROTOCOL_VERSION,
     SHIELDING_MATERIALS,
@@ -114,6 +117,72 @@ class TestRequest:
             shielding_material=shielding_material,
             shielding_thickness_mm=shielding_thickness_mm,
             duration_s=duration_s,
+            sent_at_utc=utc_timestamp(),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a dictionary for logging or transmission."""
+
+        return asdict(self)
+
+    def to_json(self) -> str:
+        """Return a compact JSON representation."""
+
+        return json.dumps(
+            self.to_dict(),
+            separators=(",", ":"),
+        )
+
+
+@dataclass(frozen=True)
+class BaselineTestRequest:
+    """Represent one validated BASELINE_TEST request.
+
+    A baseline is a no-beam reference run: the DUT starts the same workloads a
+    beam test does and logs its input current to a CSV. There are deliberately no
+    beam-energy or shielding fields -- the beam is off, so recording one would put
+    a fiction into the run metadata. The operator supplies only how long to run.
+    """
+
+    protocol_version: int
+    command: str
+    request_id: str
+    duration_s: int
+    duration_minutes: int
+    sent_at_utc: str
+
+    @classmethod
+    def create(
+        cls,
+        duration_minutes: int = DEFAULT_BASELINE_MINUTES,
+    ) -> "BaselineTestRequest":
+        """Validate the requested length (in minutes) and create the request."""
+
+        # bool is an int subclass; reject it before the numeric range check, as
+        # TestRequest.create does for duration_s.
+        if isinstance(duration_minutes, bool) or not isinstance(
+            duration_minutes, (int, float)
+        ):
+            raise TypeError(
+                "duration_minutes must be a positive number"
+            )
+
+        if not 0 < duration_minutes <= MAX_BASELINE_MINUTES:
+            raise ValueError(
+                "duration_minutes must be greater than 0 and at most "
+                f"{MAX_BASELINE_MINUTES}"
+            )
+
+        # The wire contract is in seconds (shared with START_TEST); minutes are
+        # purely the operator-facing unit.
+        duration_s = int(round(duration_minutes * 60))
+
+        return cls(
+            protocol_version=PROTOCOL_VERSION,
+            command=BASELINE_TEST_COMMAND,
+            request_id=str(uuid4()),
+            duration_s=duration_s,
+            duration_minutes=duration_minutes,
             sent_at_utc=utc_timestamp(),
         )
 

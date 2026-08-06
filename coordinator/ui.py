@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 import tkinter as tk
 from datetime import datetime
 from enum import Enum
@@ -16,6 +17,7 @@ from typing import Any
 
 from coordinator.constants import (
     BEAM_ENERGIES_MEV,
+    DEFAULT_BASELINE_MINUTES,
     DEFAULT_DURATION_S,
     MAX_DURATION_S,
     SHIELDING_MATERIALS,
@@ -23,6 +25,7 @@ from coordinator.constants import (
 )
 from coordinator.event_logger import EventLogger
 from coordinator.request import (
+    BaselineTestRequest,
     StopTestRequest,
     TestRequest,
 )
@@ -56,6 +59,14 @@ SEE_TYPE_LABELS = {
 SEE_POLL_MS = 2500
 SEE_POLL_SECONDS = SEE_POLL_MS / 1000
 DEFAULT_SEE_LOG_ROOT = "arbiter_logs"
+
+# Baseline runs: the DUT writes the current CSV into /var/log/radtest/power and the
+# arbiter's pull loop mirrors it here, so the GUI reads it off the local disk rather
+# than needing SSH itself. The pull is periodic, so the file can lag the STOP reply
+# by a few seconds -- we poll for it instead of declaring it missing on first look.
+BASELINE_LOG_SUBDIR = "power"
+BASELINE_CSV_WAIT_S = 90
+BASELINE_CSV_POLL_S = 3
 
 
 class CoordinatorState(Enum):
@@ -142,7 +153,14 @@ class TestCoordinatorApp(ttk.Frame):
         self.material_var = tk.StringVar(value="MLC1")
         self.thickness_var = tk.StringVar(value="12")
         self.duration_var = tk.StringVar(value=str(DEFAULT_DURATION_S))
+        self.baseline_minutes_var = tk.StringVar(
+            value=str(DEFAULT_BASELINE_MINUTES)
+        )
         self.summary_var = tk.StringVar()
+
+        # True while the ACTIVE run was started by "Baseline Test" rather than
+        # "Start Test", so the STOP path knows to also collect the current CSV.
+        self.active_run_is_baseline = False
 
         # Pending "after" id for the coordinator-side auto-STOP timer. The DUT owns
         # the authoritative run timer; this mirror fires at the same duration so the
@@ -159,6 +177,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         self.start_button: ttk.Button
         self.stop_button: ttk.Button
+        self.baseline_button: ttk.Button
         self.activity_log: tk.Text
 
         self._configure_window()
@@ -198,8 +217,10 @@ class TestCoordinatorApp(ttk.Frame):
         self.master.title(
             "Jetson Proton Test Coordinator"
         )
-        self.master.geometry("720x860")
-        self.master.minsize(650, 780)
+        # Taller than before: the baseline controls add a row between the
+        # start/stop buttons and the status line.
+        self.master.geometry("720x940")
+        self.master.minsize(650, 860)
 
         self.master.columnconfigure(0, weight=1)
         self.master.rowconfigure(0, weight=1)
@@ -395,6 +416,56 @@ class TestCoordinatorApp(ttk.Frame):
             padx=(8, 0),
         )
 
+        # Baseline run: same workloads as a beam test, beam off, plus a current
+        # capture. Its own length field, in minutes -- baselines run for an hour,
+        # not the ~100 s of a beam shot, and Stop Test ends either kind of run.
+        baseline_frame = ttk.LabelFrame(
+            button_frame,
+            text="Baseline (no beam) - runs the full test stack + logs current",
+            padding=10,
+        )
+        baseline_frame.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(14, 0),
+        )
+        baseline_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            baseline_frame,
+            text="Duration (minutes):",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+        )
+
+        self.baseline_entry = ttk.Entry(
+            baseline_frame,
+            textvariable=self.baseline_minutes_var,
+            width=10,
+        )
+        self.baseline_entry.grid(
+            row=0,
+            column=1,
+            sticky="w",
+        )
+
+        self.baseline_button = ttk.Button(
+            baseline_frame,
+            text="Baseline Test",
+            command=self._on_baseline_test,
+            width=18,
+        )
+        self.baseline_button.grid(
+            row=0,
+            column=2,
+            padx=(12, 0),
+        )
+
         status_frame = ttk.Frame(self)
         status_frame.grid(
             row=7,
@@ -584,6 +655,9 @@ class TestCoordinatorApp(ttk.Frame):
             self.stop_button.configure(
                 state="disabled"
             )
+            self.baseline_button.configure(
+                state="normal"
+            )
 
             for widget in self._selection_widgets:
                 widget.configure(
@@ -591,6 +665,7 @@ class TestCoordinatorApp(ttk.Frame):
                 )
             # A free-text entry, not a dropdown -> editable (not "readonly") at idle.
             self.duration_entry.configure(state="normal")
+            self.baseline_entry.configure(state="normal")
 
         elif (
             self.coordinator_state
@@ -602,12 +677,18 @@ class TestCoordinatorApp(ttk.Frame):
             self.stop_button.configure(
                 state="normal"
             )
+            # One run at a time: a baseline and a beam test would fight over the
+            # same ARMED flags and services on the DUT.
+            self.baseline_button.configure(
+                state="disabled"
+            )
 
             for widget in self._selection_widgets:
                 widget.configure(
                     state="disabled"
                 )
             self.duration_entry.configure(state="disabled")
+            self.baseline_entry.configure(state="disabled")
 
         else:
             self.start_button.configure(
@@ -616,16 +697,20 @@ class TestCoordinatorApp(ttk.Frame):
             self.stop_button.configure(
                 state="disabled"
             )
+            self.baseline_button.configure(
+                state="disabled"
+            )
 
             for widget in self._selection_widgets:
                 widget.configure(
                     state="disabled"
                 )
             self.duration_entry.configure(state="disabled")
+            self.baseline_entry.configure(state="disabled")
 
     def _validate_response(
         self,
-        request: TestRequest | StopTestRequest,
+        request: TestRequest | BaselineTestRequest | StopTestRequest,
         response: dict[str, Any],
     ) -> None:
         """Validate a receiver acknowledgment."""
@@ -651,7 +736,7 @@ class TestCoordinatorApp(ttk.Frame):
 
     def _log_exchange(
         self,
-        request: TestRequest | StopTestRequest,
+        request: TestRequest | BaselineTestRequest | StopTestRequest,
         response: dict[str, Any],
     ) -> None:
         """Display one command and response exchange."""
@@ -672,8 +757,12 @@ class TestCoordinatorApp(ttk.Frame):
             )
         )
 
-    def _next_result_path(self) -> Path:
-        """Return results/test_<N>.csv with the next unused N (test_1, test_2, ...)."""
+    def _next_result_path(self, prefix: str = "test") -> Path:
+        """Return results/<prefix>_<N>.csv with the next unused N (test_1, test_2, ...).
+
+        Beam runs use the "test" prefix and baselines use "baseline", so the two
+        kinds of result never share a numbering sequence and can't be confused.
+        """
 
         results_dir = (
             Path(__file__).resolve().parent.parent
@@ -682,10 +771,10 @@ class TestCoordinatorApp(ttk.Frame):
         results_dir.mkdir(parents=True, exist_ok=True)
 
         number = 1
-        while (results_dir / f"test_{number}.csv").exists():
+        while (results_dir / f"{prefix}_{number}.csv").exists():
             number += 1
 
-        return results_dir / f"test_{number}.csv"
+        return results_dir / f"{prefix}_{number}.csv"
 
     def _save_result_csv(
         self,
@@ -742,6 +831,204 @@ class TestCoordinatorApp(ttk.Frame):
                 f"Could not save results CSV: {error}"
             )
             return None
+
+    def _csv_data_rows(self, path: Path) -> int:
+        """Count data rows (everything but the header) in a CSV. -1 if unreadable."""
+
+        try:
+            with open(path, "r", encoding="utf-8", newline="") as handle:
+                return max(0, sum(1 for _ in handle) - 1)
+        except OSError:
+            return -1
+
+    def _copy_baseline_csv(
+        self,
+        csv_name: str,
+        expected_rows: int | None = None,
+    ) -> Path | None:
+        """Copy the pulled current CSV into results/baseline_<N>.csv.
+
+        Returns the saved path, or None if the arbiter has not mirrored the whole
+        file yet. Never raises into the GUI.
+
+        `expected_rows` is the DUT's own sample count from the STOP reply. It
+        matters: the arbiter mirrors the DUT every few seconds, so at the moment a
+        run stops the local copy is typically a sample or two short. Copying it
+        blindly produced a results CSV missing the end of the run (observed
+        2026-08-06: 58 rows saved for a 60-sample capture). The DUT's count is the
+        authority, so wait until the mirror has caught up to it.
+        """
+
+        source = (
+            self._see_log_root
+            / BASELINE_LOG_SUBDIR
+            / csv_name
+        )
+
+        if not source.is_file():
+            return None
+
+        if expected_rows:
+            rows = self._csv_data_rows(source)
+            # >= not ==: rows include any SENSOR_READ_FAILED rows, which the DUT's
+            # `samples` count excludes.
+            if rows < expected_rows:
+                return None
+
+        try:
+            destination = self._next_result_path(
+                prefix="baseline"
+            )
+            destination.write_bytes(
+                source.read_bytes()
+            )
+            self._append_log(
+                f"Baseline CSV saved: {destination}"
+            )
+            return destination
+
+        except OSError as error:
+            self._append_log(
+                f"Could not save baseline CSV: {error}"
+            )
+            return None
+
+    def _fetch_baseline_csv(
+        self,
+        baseline: dict[str, Any],
+    ) -> Path | None:
+        """Try once to collect the baseline CSV; if it hasn't arrived, keep trying
+        in the background.
+
+        The arbiter's pull loop mirrors the DUT's /var/log/radtest/power every few
+        seconds, so right after STOP the file is usually there but occasionally a
+        beat behind. Rather than reporting a missing CSV that is about to appear,
+        we poll off the Tk thread and report into the activity log when it lands.
+        """
+
+        csv_name = baseline.get("csv_name")
+        if not isinstance(csv_name, str) or not csv_name:
+            return None
+
+        samples = baseline.get("samples")
+        expected = samples if isinstance(samples, int) and samples > 0 else None
+
+        saved = self._copy_baseline_csv(csv_name, expected)
+        if saved is not None:
+            return saved
+
+        self._append_log(
+            f"Baseline CSV {csv_name} not complete locally yet "
+            f"(DUT recorded {expected if expected else '?'} samples); waiting up "
+            f"to {BASELINE_CSV_WAIT_S}s for the arbiter pull to catch up..."
+        )
+
+        def worker() -> None:
+            deadline = time.monotonic() + BASELINE_CSV_WAIT_S
+            while time.monotonic() < deadline:
+                time.sleep(BASELINE_CSV_POLL_S)
+                source = (
+                    self._see_log_root
+                    / BASELINE_LOG_SUBDIR
+                    / csv_name
+                )
+                if not source.is_file():
+                    continue
+                if expected and self._csv_data_rows(source) < expected:
+                    continue                    # still mid-transfer; keep waiting
+                try:
+                    self.master.after(
+                        0,
+                        lambda: self._copy_baseline_csv(csv_name, expected),
+                    )
+                except (tk.TclError, RuntimeError):
+                    pass
+                return
+
+            # Out of time. Save whatever did arrive rather than nothing, but say
+            # plainly that it is short of what the DUT recorded.
+            def give_up() -> None:
+                partial = self._copy_baseline_csv(csv_name)
+                if partial is None:
+                    self._append_log(
+                        f"Baseline CSV {csv_name} never arrived. It is still on "
+                        f"the DUT at {baseline.get('csv', '/var/log/radtest/power/')}"
+                        " - pull it by hand (scp) if the arbiter pull loop is not "
+                        "running."
+                    )
+                else:
+                    self._append_log(
+                        f"WARNING: saved {partial.name} but it is INCOMPLETE "
+                        f"(fewer than the {expected} samples the DUT recorded). "
+                        f"The full file is on the DUT at "
+                        f"{baseline.get('csv', '/var/log/radtest/power/')}"
+                    )
+
+            try:
+                self.master.after(0, give_up)
+            except (tk.TclError, RuntimeError):
+                pass
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="baseline-csv-wait",
+        ).start()
+
+        return None
+
+    def _format_baseline(
+        self,
+        baseline: dict[str, Any] | None,
+        csv_path: Path | None,
+    ) -> list[str]:
+        """Build the baseline section of the post-test popup."""
+
+        if not isinstance(baseline, dict):
+            return [
+                "",
+                "No current baseline was returned by the DUT.",
+            ]
+
+        if baseline.get("error"):
+            return [
+                "",
+                f"Current baseline error: {baseline['error']}",
+            ]
+
+        lines = [
+            "",
+            "Current baseline (VDD_IN):",
+            f"  Samples: {baseline.get('samples', 0)} "
+            f"(sensor failures: {baseline.get('sensor_failures', 0)})",
+        ]
+
+        current = baseline.get("current_ma")
+        if isinstance(current, dict):
+            lines.append(
+                "  Current mA min/mean/max: "
+                f"{current.get('min')} / "
+                f"{current.get('mean')} / "
+                f"{current.get('max')}"
+            )
+
+        power = baseline.get("power_mw")
+        if isinstance(power, dict):
+            lines.append(
+                f"  Mean power: {power.get('mean')} mW"
+            )
+
+        if baseline.get("stopped_early"):
+            lines.append(
+                "  NOTE: stopped before the requested duration."
+            )
+
+        lines.append(
+            f"  CSV: {csv_path.name if csv_path else baseline.get('csv_name', '?')}"
+            + ("" if csv_path else "  (not mirrored yet - see activity log)")
+        )
+
+        return lines
 
     def _format_results(
         self,
@@ -1124,6 +1411,211 @@ class TestCoordinatorApp(ttk.Frame):
                 parent=self.master,
             )
 
+    def _on_baseline_test(self) -> None:
+        """Validate, confirm, log and send BASELINE_TEST.
+
+        Deliberately parallel to _on_start_test: a baseline is a normal run of the
+        full DUT stack with the beam off, so it uses the same ACTIVE state, the
+        same Stop Test button and the same auto-stop mirror. The only differences
+        are the command, the length in minutes, and the current CSV at the end.
+        """
+
+        if (
+            self.coordinator_state
+            != CoordinatorState.IDLE
+        ):
+            self._append_log(
+                "BASELINE_TEST ignored because "
+                "the coordinator is not idle."
+            )
+            return
+
+        try:
+            minutes = int(
+                self.baseline_minutes_var.get().strip()
+            )
+
+            request = BaselineTestRequest.create(
+                duration_minutes=minutes,
+            )
+
+        except (TypeError, ValueError) as error:
+            self.status_var.set(
+                "Invalid baseline duration"
+            )
+            self._append_log(
+                f"Validation error: {error}"
+            )
+
+            self._record_event(
+                "BASELINE_TEST_VALIDATION_FAILED",
+                transport=self.transport_mode,
+                error=str(error),
+            )
+
+            messagebox.showerror(
+                "Invalid Baseline Duration",
+                str(error),
+                parent=self.master,
+            )
+            return
+
+        confirmation_message = (
+            "Confirm BASELINE_TEST\n\n"
+            "This runs the full test stack (CUDA particle sim + "
+            "GPU RAM tester) with NO beam, and logs the board's "
+            "input current to a CSV.\n\n"
+            f"Duration: {request.duration_minutes} min "
+            f"({request.duration_s} s)\n\n"
+            f"Transport: "
+            f"{self.transport_mode.upper()}\n\n"
+            "Confirm the beam is OFF, then send this command?"
+        )
+
+        confirmed = messagebox.askyesno(
+            "Confirm Baseline Test",
+            confirmation_message,
+            parent=self.master,
+        )
+
+        if not confirmed:
+            self.status_var.set(
+                "BASELINE_TEST cancelled"
+            )
+            self._append_log(
+                "BASELINE_TEST cancelled before "
+                f"submission: {request.request_id}"
+            )
+
+            self._record_event(
+                "BASELINE_TEST_CANCELLED",
+                transport=self.transport_mode,
+                request=request.to_dict(),
+            )
+            return
+
+        self._set_coordinator_state(
+            CoordinatorState.STARTING
+        )
+        self.status_var.set(
+            "Submitting BASELINE_TEST via "
+            f"{self.transport_mode}..."
+        )
+        self.master.update_idletasks()
+
+        try:
+            event_saved = self._record_event(
+                "BASELINE_TEST_SENT",
+                transport=self.transport_mode,
+                request=request.to_dict(),
+            )
+
+            if not event_saved:
+                self.active_test_request_id = None
+
+                self._set_coordinator_state(
+                    CoordinatorState.IDLE
+                )
+
+                self.status_var.set(
+                    "Logging failed - "
+                    "BASELINE_TEST not sent"
+                )
+
+                messagebox.showerror(
+                    "Persistent Logging Failed",
+                    "BASELINE_TEST was not sent because "
+                    "its audit record could not be saved.",
+                    parent=self.master,
+                )
+                return
+
+            response = self.transport.send(
+                request
+            )
+
+            self._validate_response(
+                request,
+                response,
+            )
+            self._log_exchange(
+                request,
+                response,
+            )
+
+            self.active_test_request_id = (
+                request.request_id
+            )
+            self.active_run_is_baseline = True
+
+            self._set_coordinator_state(
+                CoordinatorState.ACTIVE
+            )
+
+            # Same mirror timer as a beam run: the DUT owns the authoritative
+            # stop, this one fetches the summary + CSV without an operator click.
+            self._schedule_auto_stop(request.duration_s)
+
+            self._record_event(
+                "BASELINE_TEST_ACCEPTED",
+                transport=self.transport_mode,
+                request=request.to_dict(),
+                response=response,
+            )
+
+            baseline = response.get("baseline")
+            csv_name = (
+                baseline.get("csv_name")
+                if isinstance(baseline, dict)
+                else None
+            )
+
+            self.status_var.set(
+                "Baseline active - "
+                f"{request.request_id[:8]} "
+                f"(auto-stop in {request.duration_minutes} min)"
+            )
+
+            messagebox.showinfo(
+                "Baseline Accepted",
+                "BASELINE_TEST was accepted.\n\n"
+                f"Request ID: "
+                f"{request.request_id}\n\n"
+                f"Logging current to:\n{csv_name or '(DUT did not name a CSV)'}\n\n"
+                f"The run will auto-stop after "
+                f"{request.duration_minutes} min "
+                "(or press Stop Test).",
+                parent=self.master,
+            )
+
+        except Exception as error:
+            self.active_test_request_id = None
+            self.active_run_is_baseline = False
+
+            self._set_coordinator_state(
+                CoordinatorState.IDLE
+            )
+
+            self.status_var.set(
+                "BASELINE_TEST failed"
+            )
+            self._append_log(
+                f"BASELINE_TEST error: {error}"
+            )
+
+            self._record_event(
+                "BASELINE_TEST_FAILED",
+                transport=self.transport_mode,
+                request_id=request.request_id,
+                error=str(error),
+            )
+
+            messagebox.showerror(
+                "Baseline Failed",
+                str(error),
+                parent=self.master,
+            )
+
     def _on_stop_test(self, automatic: bool = False) -> None:
         """Confirm, log and send STOP_TEST. When `automatic` (fired by the duration
         timer) the confirmation dialog is skipped."""
@@ -1315,16 +1807,38 @@ class TestCoordinatorApp(ttk.Frame):
             ):
                 csv_path = self._save_result_csv(summary)
 
+            # A baseline run additionally returns the current capture; collect the
+            # CSV the DUT wrote (mirrored here by the arbiter's pull loop).
+            was_baseline = self.active_run_is_baseline
+            self.active_run_is_baseline = False
+            baseline = response.get("baseline")
+            baseline_csv_path = None
+            if isinstance(baseline, dict):
+                baseline_csv_path = self._fetch_baseline_csv(
+                    baseline
+                )
+
             # The run is over, so the heavy data is safe to move now.
             self._trigger_full_pull(stopped_target_id)
 
+            results_text = self._format_results(
+                stopped_target_id,
+                summary,
+                csv_path,
+            )
+
+            if was_baseline or isinstance(baseline, dict):
+                results_text = "\n".join(
+                    [results_text]
+                    + self._format_baseline(
+                        baseline,
+                        baseline_csv_path,
+                    )
+                )
+
             messagebox.showinfo(
-                "Test Complete",
-                self._format_results(
-                    stopped_target_id,
-                    summary,
-                    csv_path,
-                ),
+                "Baseline Complete" if was_baseline else "Test Complete",
+                results_text,
                 parent=self.master,
             )
 
