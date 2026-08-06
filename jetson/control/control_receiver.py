@@ -128,7 +128,10 @@ DEFAULTS = {
         "rail": "VDD_IN",
         "hwmon": None,                 # None = auto-detect; set to pin the sysfs dir
         "on_start_test": False,
-        "stop_grace_s": 15.0,          # let it finish its last sample + summary
+        # Stop budget. Both are small on purpose: the whole STOP reply has to beat
+        # the coordinator's ~5 s command timeout.
+        "stop_settle_s": 1.0,          # reap a sampler that is already finishing
+        "stop_grace_s": 3.0,           # after SIGTERM: flush + write the summary
     },
 }
 
@@ -624,13 +627,21 @@ def start_current_logger(cfg, run_id, duration_s, state, lock):
 def stop_current_logger(cfg, state, lock):
     """Stop the sampler (if running) and return its summary dict, or None.
 
-    Called from both the manual STOP and the DUT-owned auto-stop. When the run hit
-    its full duration the sampler has usually exited on its own already, so we
-    wait briefly before signalling; SIGTERM makes it write the summary sidecar, so
-    an operator's early STOP still yields complete stats for the samples taken.
+    Called from both the manual STOP and the DUT-owned auto-stop, and it must stay
+    FAST: this runs inside the request handler, and the coordinator gives up on a
+    command after ~5 s (observed 2026-08-06 -- an early Stop Test timed out in the
+    GUI while the DUT was still waiting on the sampler, leaving the operator with a
+    "test remains active" error for a run that had in fact stopped).
+
+    So: a short settle for the auto-stop case, where the sampler is already
+    finishing its own duration, then SIGTERM. The sampler flushes every row as it
+    goes and writes its summary on SIGTERM, noticing the signal within a quarter
+    second, so an operator's early stop still yields complete stats for the samples
+    actually taken -- it just does it in under a second instead of fifteen.
     """
     lg = cfg.get("current_logger") or {}
-    grace = float(lg.get("stop_grace_s", 15.0))
+    settle = float(lg.get("stop_settle_s", 1.0))
+    grace = float(lg.get("stop_grace_s", 3.0))
 
     with lock:
         entry = state.pop("current_logger", None)
@@ -639,15 +650,15 @@ def stop_current_logger(cfg, state, lock):
 
     proc = entry["proc"]
     try:
-        proc.wait(timeout=grace)
+        proc.wait(timeout=settle)                     # already finishing? reap it
     except subprocess.TimeoutExpired:
         proc.terminate()                              # SIGTERM -> clean finalize
         try:
-            proc.wait(timeout=10.0)
+            proc.wait(timeout=grace)
         except subprocess.TimeoutExpired:
             proc.kill()                               # last resort; CSV rows survive
             try:
-                proc.wait(timeout=5.0)
+                proc.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 pass
 

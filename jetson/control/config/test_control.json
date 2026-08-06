@@ -23,7 +23,8 @@
     "rolling_window": 10,
     "rail": "VDD_IN",
     "on_start_test": false,
-    "stop_grace_s": 15.0
+    "stop_settle_s": 1.0,
+    "stop_grace_s": 3.0
   },
 
   "channels": [

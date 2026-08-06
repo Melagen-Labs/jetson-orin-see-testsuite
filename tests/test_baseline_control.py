@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -143,6 +144,25 @@ class CurrentLoggerLifecycleTests(unittest.TestCase):
             "sequence", "recorded_at_utc", "current_ma", "voltage_mv", "power_mw",
             "rolling_average_ma", "rolling_window_count", "sensor_source",
             "data_quality_flags", "run_id", "jetson_id", "boot_id"))
+
+    def test_stopping_a_long_run_returns_promptly(self):
+        """A manual stop must not wait out the sampler's remaining duration.
+
+        Regression for 2026-08-06: stop_current_logger waited stop_grace_s BEFORE
+        signalling, so stopping a 60-minute baseline blocked the reply for 15 s and
+        the coordinator (5 s command timeout) reported "STOP_TEST failed - test
+        remains active" for a run that had actually stopped.
+        """
+        cr.start_current_logger(self.cfg, "run-long", 3600, self.state, self.lock)
+
+        began = time.monotonic()
+        summary = cr.stop_current_logger(self.cfg, self.state, self.lock)
+        elapsed = time.monotonic() - began
+
+        self.assertLess(elapsed, 4.0, "stop took %.1fs -- the GUI gives up at 5" % elapsed)
+        # The sampler is gone either way; on POSIX it also finalized its summary.
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["csv_name"], os.path.basename(summary["csv"]))
 
     def test_stop_without_a_running_sampler_is_harmless(self):
         self.assertIsNone(cr.stop_current_logger(self.cfg, self.state, self.lock))
