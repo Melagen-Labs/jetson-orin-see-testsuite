@@ -12,6 +12,7 @@ from typing import Any
 
 from coordinator.constants import (
     BEAM_ENERGIES_MEV,
+    BEAM_ENERGY_MODES,
     MAX_DURATION_S,
     PROTOCOL_VERSION,
     SHIELDING_MATERIALS,
@@ -37,6 +38,7 @@ START_REQUIRED_FIELDS = {
 }
 
 START_OPTIONAL_FIELDS = {
+    "beam_energy_mode",
     "shielding_mode",
     "shielding_reference_mm",
     "shielding_actual_thickness_mm",
@@ -184,16 +186,37 @@ def validate_start_request(
     """Validate fields specific to START_TEST."""
 
     beam_energy = payload["beam_energy_mev"]
+    energy_mode = payload.get("beam_energy_mode", "preset")
 
-    if type(beam_energy) is not int:
+    if energy_mode not in BEAM_ENERGY_MODES:
         raise RequestValidationError(
-            "beam_energy_mev must be an integer"
+            "beam_energy_mode must be preset or custom"
         )
 
-    if beam_energy not in BEAM_ENERGIES_MEV:
-        raise RequestValidationError(
-            f"Unsupported beam energy: {beam_energy}"
-        )
+    if energy_mode == "preset":
+        if type(beam_energy) is not int:
+            raise RequestValidationError(
+                "beam_energy_mev must be an integer"
+            )
+
+        if beam_energy not in BEAM_ENERGIES_MEV:
+            raise RequestValidationError(
+                f"Unsupported beam energy: {beam_energy}"
+            )
+    else:
+        # Mirrors the real DUT receiver: any finite positive energy.
+        if isinstance(beam_energy, bool) or not isinstance(
+            beam_energy,
+            (int, float),
+        ):
+            raise RequestValidationError(
+                "beam_energy_mev must be numeric"
+            )
+
+        if not math.isfinite(beam_energy) or beam_energy <= 0:
+            raise RequestValidationError(
+                "beam_energy_mev must be a finite value greater than 0"
+            )
 
     mode = payload.get(
         "shielding_mode",

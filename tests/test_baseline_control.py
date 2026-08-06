@@ -75,6 +75,58 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(any("beam_energy_mev" in e for e in errors), errors)
 
 
+class BeamEnergyTests(unittest.TestCase):
+    """Preset energies come from the campaign list; custom is any finite positive."""
+
+    def setUp(self):
+        self.cfg = cr.load_config(None)
+
+    def request(self, **updates):
+        msg = {
+            "protocol_version": 1, "command": "START_TEST",
+            "request_id": "r-1", "sent_at_utc": "2026-01-01T00:00:00.000Z",
+            "beam_energy_mev": 100, "shielding_material": "MLC1",
+            "shielding_thickness_mm": 12,
+        }
+        msg.update(updates)
+        return msg
+
+    def test_campaign_presets_are_accepted(self):
+        for energy in (50, 63, 100, 200):
+            with self.subTest(energy=energy):
+                _, errors = cr.validate(self.request(beam_energy_mev=energy), self.cfg)
+                self.assertEqual(errors, [])
+
+    def test_125_is_no_longer_a_preset(self):
+        # Replaced by 100 MeV on 2026-08-06.
+        _, errors = cr.validate(self.request(beam_energy_mev=125), self.cfg)
+        self.assertTrue(any("beam_energy_mev" in e for e in errors), errors)
+
+    def test_custom_energy_is_accepted(self):
+        _, errors = cr.validate(
+            self.request(beam_energy_mode="custom", beam_energy_mev=74.5), self.cfg)
+        self.assertEqual(errors, [])
+
+    def test_custom_energy_must_be_a_positive_number(self):
+        for bad in (0, -10, "80", True, float("nan"), float("inf")):
+            with self.subTest(energy=bad):
+                _, errors = cr.validate(
+                    self.request(beam_energy_mode="custom", beam_energy_mev=bad),
+                    self.cfg)
+                self.assertTrue(any("beam_energy_mev" in e for e in errors), errors)
+
+    def test_unknown_energy_mode_is_rejected(self):
+        _, errors = cr.validate(
+            self.request(beam_energy_mode="whatever"), self.cfg)
+        self.assertTrue(any("beam_energy_mode" in e for e in errors), errors)
+
+    def test_custom_energy_is_recorded_as_custom(self):
+        meta = cr.run_metadata(
+            self.request(beam_energy_mode="custom", beam_energy_mev=74.5))
+        self.assertEqual(meta["beam_energy"], "74.5MeV")
+        self.assertEqual(meta["beam_energy_mode"], "custom")
+
+
 class RunMetadataTests(unittest.TestCase):
 
     def test_baseline_metadata_says_no_beam(self):

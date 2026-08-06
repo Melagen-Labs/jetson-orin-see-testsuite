@@ -76,7 +76,7 @@ def apply_campaign_ui(app: Any) -> None:
     if app.energy_var.get() not in {
         str(value) for value in CAMPAIGN_BEAM_ENERGIES_MEV
     }:
-        app.energy_var.set("125")
+        app.energy_var.set("100")
 
     if app.material_var.get() not in CAMPAIGN_SHIELDING_MATERIALS:
         app.material_var.set("MLC1")

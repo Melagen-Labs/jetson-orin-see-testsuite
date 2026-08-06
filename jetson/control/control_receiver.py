@@ -85,7 +85,8 @@ DEFAULTS = {
     "default_duration_s": 100,         # DUT-owned run timer when START omits duration_s
     "default_baseline_duration_s": 3600,  # BASELINE_TEST default (1 h, the reference run)
     "max_duration_s": 86400,           # sanity cap (24 h) on an operator-supplied duration
-    "beam_energies_mev": [50, 63, 125, 200],
+    "beam_energies_mev": [50, 63, 100, 200],
+    "beam_energy_modes": ["preset", "custom"],
     "shielding_modes": ["preset", "custom"],
     "shielding_materials": ["Bare", "Aluminium", "MLC1", "MLC2"],
     "shielding_thicknesses_mm": [0, 8, 12, 16],
@@ -234,11 +235,25 @@ def validate(msg, cfg):
             errors.append("duration_s must be > 0 and <= %s" % cfg["max_duration_s"])
 
     if cmd == "START_TEST":
-        if msg.get("beam_energy_mev") not in cfg["beam_energies_mev"]:
-            errors.append(
-                "beam_energy_mev must be one of %s"
-                % cfg["beam_energies_mev"]
-            )
+        # Beam energy mirrors the shielding contract: a preset must come from the
+        # campaign list, while "custom" accepts any finite positive number -- beam
+        # time sometimes lands on an energy nobody planned for, and refusing to
+        # record it would be worse than recording it as custom.
+        energy_modes = cfg.get("beam_energy_modes", ["preset", "custom"])
+        energy_mode = msg.get("beam_energy_mode", "preset")
+        if energy_mode not in energy_modes:
+            errors.append("beam_energy_mode must be one of %s" % energy_modes)
+        elif energy_mode == "preset":
+            if msg.get("beam_energy_mev") not in cfg["beam_energies_mev"]:
+                errors.append(
+                    "beam_energy_mev must be one of %s"
+                    % cfg["beam_energies_mev"]
+                )
+        else:
+            _, error = _validated_numeric(
+                msg.get("beam_energy_mev"), "beam_energy_mev")
+            if error:
+                errors.append(error)
 
         allowed_modes = cfg.get(
             "shielding_modes",
@@ -411,6 +426,7 @@ def run_metadata(msg, baseline=False):
         return {
             "run_id": msg["request_id"],
             "beam_energy": "none",
+            "beam_energy_mode": "none",
             "shield_config": "none",
             "shielding_mode": "none",
             "shielding_material": "none",
@@ -446,6 +462,9 @@ def run_metadata(msg, baseline=False):
     return {
         "run_id": msg["request_id"],
         "beam_energy": "%sMeV" % msg["beam_energy_mev"],
+        # A custom energy is recorded as such, so post-processing can tell a
+        # planned campaign point from an off-list one without guessing.
+        "beam_energy_mode": msg.get("beam_energy_mode", "preset"),
         "shield_config": shield_config,
         "shielding_mode": mode,
         "shielding_material": material,

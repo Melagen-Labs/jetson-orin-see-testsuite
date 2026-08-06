@@ -64,6 +64,10 @@ DEFAULT_SEE_LOG_ROOT = "arbiter_logs"
 # arbiter's pull loop mirrors it here, so the GUI reads it off the local disk rather
 # than needing SSH itself. The pull is periodic, so the file can lag the STOP reply
 # by a few seconds -- we poll for it instead of declaring it missing on first look.
+# Dropdown entry that swaps the beam energy over to the free-text field beside it.
+# Not a number, so it can never be confused with a preset.
+CUSTOM_ENERGY_LABEL = "Custom..."
+
 BASELINE_LOG_SUBDIR = "power"
 BASELINE_CSV_WAIT_S = 90
 BASELINE_CSV_POLL_S = 3
@@ -150,6 +154,7 @@ class TestCoordinatorApp(ttk.Frame):
         self.active_test_request_id: str | None = None
 
         self.energy_var = tk.StringVar(value="200")
+        self.custom_energy_var = tk.StringVar(value="")
         self.material_var = tk.StringVar(value="MLC1")
         self.thickness_var = tk.StringVar(value="12")
         self.duration_var = tk.StringVar(value=str(DEFAULT_DURATION_S))
@@ -263,21 +268,55 @@ class TestCoordinatorApp(ttk.Frame):
             pady=6,
         )
 
-        energy_box = ttk.Combobox(
-            self,
-            textvariable=self.energy_var,
-            values=[
-                str(value)
-                for value in BEAM_ENERGIES_MEV
-            ],
-            state="readonly",
-            width=25,
-        )
-        energy_box.grid(
+        energy_frame = ttk.Frame(self)
+        energy_frame.grid(
             row=1,
             column=1,
             sticky="ew",
             pady=6,
+        )
+        energy_frame.columnconfigure(0, weight=1)
+
+        energy_box = ttk.Combobox(
+            energy_frame,
+            textvariable=self.energy_var,
+            values=[
+                str(value)
+                for value in BEAM_ENERGIES_MEV
+            ]
+            + [CUSTOM_ENERGY_LABEL],
+            state="readonly",
+            width=16,
+        )
+        energy_box.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
+
+        # Only meaningful when the dropdown is on "Custom"; kept disabled
+        # otherwise so the value in force is never ambiguous.
+        self.custom_energy_entry = ttk.Entry(
+            energy_frame,
+            textvariable=self.custom_energy_var,
+            width=8,
+            state="disabled",
+        )
+        self.custom_energy_entry.grid(
+            row=0,
+            column=1,
+            sticky="w",
+            padx=(8, 0),
+        )
+
+        ttk.Label(
+            energy_frame,
+            text="MeV",
+        ).grid(
+            row=0,
+            column=2,
+            sticky="w",
+            padx=(4, 0),
         )
 
         ttk.Label(
@@ -622,12 +661,83 @@ class TestCoordinatorApp(ttk.Frame):
                 "<<ComboboxSelected>>",
                 lambda _event: self._update_summary(),
             )
+        # Typing in the custom-energy box updates the summary line too, so what
+        # the operator confirms is what they typed.
+        self.custom_energy_var.trace_add(
+            "write",
+            lambda *_: self._update_summary(),
+        )
+        # Enable/disable the custom field from a trace on the variable itself,
+        # not from _update_summary: the campaign UI layers replace that method
+        # wholesale, which would leave the field permanently disabled. A variable
+        # trace fires no matter who changes the selection.
+        self.energy_var.trace_add(
+            "write",
+            lambda *_: self._sync_custom_energy_state(),
+        )
+
+    def _energy_is_custom(self) -> bool:
+        """True when the operator picked the free-text energy."""
+
+        return self.energy_var.get() == CUSTOM_ENERGY_LABEL
+
+    def _resolve_beam_energy(self) -> tuple[float | int, str]:
+        """Return (energy_mev, mode) from the dropdown + custom field.
+
+        Raises ValueError with an operator-readable message when the custom field
+        is empty or not a number -- silently falling back to a preset would run
+        the beam at an energy nobody asked for and label it as planned.
+        """
+
+        if not self._energy_is_custom():
+            return int(self.energy_var.get()), "preset"
+
+        raw = self.custom_energy_var.get().strip()
+        if not raw:
+            raise ValueError(
+                "Enter a custom beam energy in MeV, "
+                "or pick one of the preset values."
+            )
+
+        try:
+            energy = float(raw)
+        except ValueError:
+            raise ValueError(
+                f"Custom beam energy {raw!r} is not a number."
+            ) from None
+
+        if energy <= 0:
+            raise ValueError(
+                "Custom beam energy must be greater than 0 MeV."
+            )
+
+        # Keep whole numbers as ints so the DUT records "100MeV", not "100.0MeV".
+        return (int(energy) if energy.is_integer() else energy), "custom"
+
+    def _sync_custom_energy_state(self) -> None:
+        """Enable the custom-energy field only while 'Custom...' is selected."""
+
+        editable = (
+            self._energy_is_custom()
+            and self.coordinator_state == CoordinatorState.IDLE
+        )
+        self.custom_energy_entry.configure(
+            state="normal" if editable else "disabled"
+        )
 
     def _update_summary(self) -> None:
         """Display the current operator selections."""
 
+        self._sync_custom_energy_state()
+
+        if self._energy_is_custom():
+            entered = self.custom_energy_var.get().strip()
+            energy_text = f"{entered or '?'} MeV (custom)"
+        else:
+            energy_text = f"{self.energy_var.get()} MeV"
+
         self.summary_var.set(
-            f"{self.energy_var.get()} MeV | "
+            f"{energy_text} | "
             f"{self.material_var.get()} | "
             f"{self.thickness_var.get()} mm"
         )
@@ -640,6 +750,9 @@ class TestCoordinatorApp(ttk.Frame):
 
         self.coordinator_state = new_state
         self._apply_control_state()
+        # The custom-energy field is only editable at IDLE, and only when the
+        # dropdown is on Custom -- both conditions live in one place.
+        self._sync_custom_energy_state()
 
         self._append_log(
             f"STATE -> {new_state.name}"
@@ -1217,7 +1330,7 @@ class TestCoordinatorApp(ttk.Frame):
             return
 
         try:
-            beam_energy = int(self.energy_var.get())
+            beam_energy, energy_mode = self._resolve_beam_energy()
             duration_s = int(self.duration_var.get().strip())
 
             request_kwargs = getattr(
@@ -1235,8 +1348,15 @@ class TestCoordinatorApp(ttk.Frame):
                         self.thickness_var.get()
                     ),
                     duration_s=duration_s,
+                    beam_energy_mode=energy_mode,
                 )
             else:
+                # The campaign UI layers pre-build the shielding kwargs; they do
+                # not set the energy mode, so supply it unless they already did.
+                request_kwargs.setdefault(
+                    "beam_energy_mode",
+                    energy_mode,
+                )
                 request = TestRequest.create(
                     beam_energy_mev=beam_energy,
                     duration_s=duration_s,

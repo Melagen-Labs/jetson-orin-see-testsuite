@@ -11,6 +11,7 @@ from uuid import uuid4
 from coordinator.constants import (
     BASELINE_TEST_COMMAND,
     BEAM_ENERGIES_MEV,
+    BEAM_ENERGY_MODES,
     DEFAULT_BASELINE_MINUTES,
     DEFAULT_DURATION_S,
     MAX_BASELINE_MINUTES,
@@ -65,11 +66,12 @@ class TestRequest:
     protocol_version: int
     command: str
     request_id: str
-    beam_energy_mev: int
+    beam_energy_mev: int | float
     shielding_material: str
     shielding_thickness_mm: int | float
     duration_s: int | float
     sent_at_utc: str
+    beam_energy_mode: str = "preset"
     shielding_mode: str = "preset"
     shielding_reference_mm: int | float | None = None
     shielding_actual_thickness_mm: int | float | None = None
@@ -79,11 +81,12 @@ class TestRequest:
     @classmethod
     def create(
         cls,
-        beam_energy_mev: int,
+        beam_energy_mev: int | float,
         shielding_material: str,
         shielding_thickness_mm: int | float,
         duration_s: int | float = DEFAULT_DURATION_S,
         *,
+        beam_energy_mode: str = "preset",
         shielding_mode: str = "preset",
         shielding_reference_mm: int | float | None = None,
         shielding_actual_thickness_mm: int | float | None = None,
@@ -92,13 +95,30 @@ class TestRequest:
     ) -> "TestRequest":
         """Validate selections and create a START_TEST request."""
 
-        if type(beam_energy_mev) is not int:
-            raise TypeError("beam_energy_mev must be an integer")
+        if not isinstance(beam_energy_mode, str):
+            raise TypeError("beam_energy_mode must be a string")
 
-        if beam_energy_mev not in BEAM_ENERGIES_MEV:
-            raise ValueError(
-                f"Unsupported beam energy: {beam_energy_mev}. "
-                f"Allowed values: {BEAM_ENERGIES_MEV}"
+        normalized_energy_mode = beam_energy_mode.strip().lower()
+        if normalized_energy_mode not in BEAM_ENERGY_MODES:
+            raise ValueError("beam_energy_mode must be preset or custom")
+
+        if normalized_energy_mode == "preset":
+            if type(beam_energy_mev) is not int:
+                raise TypeError("preset beam_energy_mev must be an integer")
+
+            if beam_energy_mev not in BEAM_ENERGIES_MEV:
+                raise ValueError(
+                    f"Unsupported beam energy: {beam_energy_mev}. "
+                    f"Allowed values: {BEAM_ENERGIES_MEV}"
+                )
+        else:
+            # Any finite positive energy. The DUT applies the same rule, so an
+            # off-list beam point is recorded honestly rather than refused or
+            # rounded onto the nearest preset.
+            _validated_number(
+                beam_energy_mev,
+                "beam_energy_mev",
+                allow_zero=False,
             )
 
         if not isinstance(shielding_mode, str):
@@ -221,6 +241,7 @@ class TestRequest:
             command=START_TEST_COMMAND,
             request_id=str(uuid4()),
             beam_energy_mev=beam_energy_mev,
+            beam_energy_mode=normalized_energy_mode,
             shielding_material=normalized_material,
             shielding_thickness_mm=shielding_thickness_mm,
             duration_s=duration_s,

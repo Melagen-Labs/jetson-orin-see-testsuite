@@ -50,7 +50,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_bare_preset_is_valid(self) -> None:
         request = TestRequest.create(
-            125,
+            100,
             "Bare",
             0,
             shielding_mode="preset",
@@ -64,7 +64,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_mlc2_preset_carries_actual_thickness(self) -> None:
         request = TestRequest.create(
-            125,
+            100,
             "MLC2",
             12,
             shielding_mode="preset",
@@ -77,7 +77,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_custom_material_is_valid(self) -> None:
         request = TestRequest.create(
-            125,
+            100,
             "Tungsten",
             5.5,
             shielding_mode="custom",
@@ -90,7 +90,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_custom_known_material_is_valid(self) -> None:
         request = TestRequest.create(
-            125,
+            100,
             "MLC2",
             10.5,
             shielding_mode="custom",
@@ -101,7 +101,7 @@ class TestStartTestRequest(unittest.TestCase):
 
     def test_campaign_metadata_is_serialized(self) -> None:
         request = TestRequest.create(
-            125,
+            100,
             "MLC1",
             12,
             campaign_metadata={
@@ -150,7 +150,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_zero_custom_thickness_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                125,
+                100,
                 "Tungsten",
                 0,
                 shielding_mode="custom",
@@ -159,7 +159,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_blank_custom_material_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                125,
+                100,
                 "   ",
                 5.5,
                 shielding_mode="custom",
@@ -168,7 +168,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_nan_custom_thickness_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                125,
+                100,
                 "Tungsten",
                 math.nan,
                 shielding_mode="custom",
@@ -177,7 +177,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_infinite_custom_thickness_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                125,
+                100,
                 "Tungsten",
                 math.inf,
                 shielding_mode="custom",
@@ -186,7 +186,7 @@ class TestStartTestRequest(unittest.TestCase):
     def test_mismatched_custom_thickness_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TestRequest.create(
-                125,
+                100,
                 "Tungsten",
                 5.5,
                 shielding_mode="custom",

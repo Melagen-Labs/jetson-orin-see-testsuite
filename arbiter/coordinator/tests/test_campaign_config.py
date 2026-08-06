@@ -20,7 +20,7 @@ from coordinator.campaign_config import (
 
 class TestCampaignConfig(unittest.TestCase):
     def test_campaign_energies(self) -> None:
-        self.assertEqual(CAMPAIGN_BEAM_ENERGIES_MEV, (50, 63, 125, 200))
+        self.assertEqual(CAMPAIGN_BEAM_ENERGIES_MEV, (50, 63, 100, 200))
 
     def test_initial_dut_type(self) -> None:
         self.assertEqual(CAMPAIGN_DUT_TYPES, ("Jetson Orin Nano",))
@@ -64,7 +64,7 @@ class TestCampaignConfig(unittest.TestCase):
 
     def test_summary_contains_actual_and_id(self) -> None:
         config = get_shield_configuration("MLC2", 8)
-        summary = format_campaign_summary(125, config)
+        summary = format_campaign_summary(100, config)
         self.assertIn("actual 7.22 mm", summary)
         self.assertIn("M2-E08", summary)
 

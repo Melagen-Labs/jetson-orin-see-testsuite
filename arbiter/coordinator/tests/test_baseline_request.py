@@ -7,7 +7,10 @@ from coordinator.constants import (
     DEFAULT_BASELINE_MINUTES,
     MAX_BASELINE_MINUTES,
 )
-from coordinator.request import BaselineTestRequest
+from coordinator.request import (
+    BaselineTestRequest,
+    TestRequest,
+)
 from coordinator.transport import (
     MockTransport,
     validate_request_type,
@@ -98,6 +101,86 @@ class TestBaselineTestRequest(unittest.TestCase):
             first.request_id,
             second.request_id,
         )
+
+
+class TestCustomBeamEnergy(unittest.TestCase):
+    """Beam energy mirrors shielding: a campaign preset, or a custom value."""
+
+    def test_campaign_presets_are_accepted(self) -> None:
+        for energy in (50, 63, 100, 200):
+            with self.subTest(energy=energy):
+                request = TestRequest.create(energy, "MLC1", 12)
+                self.assertEqual(
+                    request.beam_energy_mev,
+                    energy,
+                )
+                self.assertEqual(
+                    request.beam_energy_mode,
+                    "preset",
+                )
+
+    def test_125_is_no_longer_a_preset(self) -> None:
+        # Replaced by 100 MeV on 2026-08-06.
+        with self.assertRaises(ValueError):
+            TestRequest.create(125, "MLC1", 12)
+
+    def test_custom_energy_is_accepted(self) -> None:
+        request = TestRequest.create(
+            74.5,
+            "MLC1",
+            12,
+            beam_energy_mode="custom",
+        )
+
+        self.assertEqual(request.beam_energy_mev, 74.5)
+        self.assertEqual(
+            request.beam_energy_mode,
+            "custom",
+        )
+        self.assertEqual(
+            json.loads(request.to_json())["beam_energy_mode"],
+            "custom",
+        )
+
+    def test_custom_energy_off_the_preset_list_is_allowed(self) -> None:
+        # The whole point: an energy nobody planned for is recorded honestly.
+        request = TestRequest.create(
+            125,
+            "MLC1",
+            12,
+            beam_energy_mode="custom",
+        )
+        self.assertEqual(request.beam_energy_mev, 125)
+
+    def test_custom_energy_must_be_positive_and_finite(self) -> None:
+        for bad in (0, -10):
+            with self.subTest(energy=bad):
+                with self.assertRaises(ValueError):
+                    TestRequest.create(
+                        bad,
+                        "MLC1",
+                        12,
+                        beam_energy_mode="custom",
+                    )
+
+        for bad in ("80", None, True):
+            with self.subTest(energy=bad):
+                with self.assertRaises(TypeError):
+                    TestRequest.create(
+                        bad,
+                        "MLC1",
+                        12,
+                        beam_energy_mode="custom",
+                    )
+
+    def test_unknown_energy_mode_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            TestRequest.create(
+                100,
+                "MLC1",
+                12,
+                beam_energy_mode="whatever",
+            )
 
 
 class TestBaselineTransportAcceptance(unittest.TestCase):

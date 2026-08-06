@@ -5,7 +5,8 @@
 
   "protocol_version": 1,
   "supported_commands": ["START_TEST", "STOP_TEST", "BASELINE_TEST"],
-  "beam_energies_mev": [50, 63, 125, 200],
+  "beam_energies_mev": [50, 63, 100, 200],
+  "beam_energy_modes": ["preset", "custom"],
   "shielding_modes": ["preset", "custom"],
   "shielding_materials": ["Bare", "Aluminium", "MLC1", "MLC2"],
   "shielding_thicknesses_mm": [0, 8, 12, 16],

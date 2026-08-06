@@ -23,6 +23,7 @@ from coordinator.campaign_config import (
     get_shield_configuration,
     validate_flux,
 )
+from coordinator.ui import CUSTOM_ENERGY_LABEL
 
 CUSTOM_OPTION = "Custom..."
 PRESET_THICKNESSES = (8, 12, 16)
@@ -58,12 +59,16 @@ def apply_campaign_ui(app: Any) -> None:
     """Apply the approved simplified campaign interface."""
 
     energy_box, material_box, thickness_box = app._selection_widgets
-    energy_box.configure(values=[str(v) for v in CAMPAIGN_BEAM_ENERGIES_MEV])
+    # Keep the "Custom..." entry alongside the campaign presets -- narrowing the
+    # list to the campaign values would drop it, and beam time does occasionally
+    # land on an energy nobody planned for.
+    energy_choices = [str(v) for v in CAMPAIGN_BEAM_ENERGIES_MEV]
+    energy_box.configure(values=energy_choices + [CUSTOM_ENERGY_LABEL])
     material_box.configure(values=SHIELD_OPTIONS)
     thickness_box.configure(values=[str(v) for v in PRESET_THICKNESSES] + [CUSTOM_OPTION])
 
-    if app.energy_var.get() not in {str(v) for v in CAMPAIGN_BEAM_ENERGIES_MEV}:
-        app.energy_var.set("125")
+    if app.energy_var.get() not in set(energy_choices) | {CUSTOM_ENERGY_LABEL}:
+        app.energy_var.set("100")
     if app.material_var.get() not in SHIELD_OPTIONS:
         app.material_var.set("MLC1")
     if app.thickness_var.get() not in {"8", "12", "16", CUSTOM_OPTION}:

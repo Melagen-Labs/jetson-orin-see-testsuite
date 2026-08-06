@@ -37,7 +37,7 @@ class ReceiverValidationTests(unittest.TestCase):
             "protocol_version": 1,
             "command": "START_TEST",
             "request_id": "request-123",
-            "beam_energy_mev": 125,
+            "beam_energy_mev": 100,
             "shielding_material": "MLC1",
             "shielding_thickness_mm": 12,
             "duration_s": 100,
