@@ -1,9 +1,10 @@
-﻿"""TCP receiver for Jetson proton-test control requests."""
+"""TCP receiver for Jetson proton-test control requests."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,14 @@ START_REQUIRED_FIELDS = {
     "shielding_thickness_mm",
     "duration_s",
     "sent_at_utc",
+}
+
+START_OPTIONAL_FIELDS = {
+    "shielding_mode",
+    "shielding_reference_mm",
+    "shielding_actual_thickness_mm",
+    "shielding_configuration_id",
+    "campaign_metadata",
 }
 
 STOP_REQUIRED_FIELDS = {
@@ -75,29 +84,28 @@ def default_receiver_log_path() -> Path:
 def validate_exact_fields(
     payload: dict[str, Any],
     required_fields: set[str],
+    optional_fields: set[str] | None = None,
 ) -> None:
-    """Reject missing or unexpected request fields."""
+    """Reject missing fields and fields outside the protocol."""
 
+    optional = optional_fields or set()
     actual_fields = set(payload)
 
     missing_fields = required_fields - actual_fields
 
     if missing_fields:
-        missing = ", ".join(
-            sorted(missing_fields)
-        )
-
+        missing = ", ".join(sorted(missing_fields))
         raise RequestValidationError(
             f"Missing fields: {missing}"
         )
 
-    unexpected_fields = actual_fields - required_fields
+    allowed_fields = required_fields | optional
+    unexpected_fields = actual_fields - allowed_fields
 
     if unexpected_fields:
         unexpected = ", ".join(
             sorted(unexpected_fields)
         )
-
         raise RequestValidationError(
             f"Unexpected fields: {unexpected}"
         )
@@ -134,6 +142,42 @@ def validate_common_fields(
         )
 
 
+def _validate_finite_number(
+    value: object,
+    field_name: str,
+    *,
+    allow_zero: bool,
+) -> float:
+    """Validate and return one finite numeric field."""
+
+    if isinstance(value, bool) or not isinstance(
+        value,
+        (int, float),
+    ):
+        raise RequestValidationError(
+            f"{field_name} must be numeric"
+        )
+
+    numeric = float(value)
+
+    if not math.isfinite(numeric):
+        raise RequestValidationError(
+            f"{field_name} must be finite"
+        )
+
+    if allow_zero:
+        if numeric < 0:
+            raise RequestValidationError(
+                f"{field_name} must not be negative"
+            )
+    elif numeric <= 0:
+        raise RequestValidationError(
+            f"{field_name} must be greater than 0"
+        )
+
+    return numeric
+
+
 def validate_start_request(
     payload: dict[str, Any],
 ) -> None:
@@ -151,6 +195,16 @@ def validate_start_request(
             f"Unsupported beam energy: {beam_energy}"
         )
 
+    mode = payload.get(
+        "shielding_mode",
+        "preset",
+    )
+
+    if mode not in {"preset", "custom"}:
+        raise RequestValidationError(
+            "shielding_mode must be preset or custom"
+        )
+
     material = payload["shielding_material"]
 
     if not isinstance(material, str):
@@ -158,28 +212,134 @@ def validate_start_request(
             "shielding_material must be a string"
         )
 
-    if material not in SHIELDING_MATERIALS:
+    normalized_material = material.strip()
+
+    if not normalized_material:
         raise RequestValidationError(
-            f"Unsupported shielding material: {material}"
+            "shielding_material must not be blank"
         )
 
     thickness = payload["shielding_thickness_mm"]
 
-    if type(thickness) is not int:
-        raise RequestValidationError(
-            "shielding_thickness_mm must be an integer"
+    if mode == "preset":
+        if normalized_material not in SHIELDING_MATERIALS:
+            raise RequestValidationError(
+                "Unsupported shielding material: "
+                f"{normalized_material}"
+            )
+
+        if type(thickness) is not int:
+            raise RequestValidationError(
+                "preset shielding_thickness_mm "
+                "must be an integer"
+            )
+
+        if thickness not in SHIELDING_THICKNESSES_MM:
+            raise RequestValidationError(
+                "Unsupported shielding thickness: "
+                f"{thickness}"
+            )
+
+        if normalized_material == "Bare" and thickness != 0:
+            raise RequestValidationError(
+                "Bare shielding must use reference 0"
+            )
+
+        if normalized_material != "Bare" and thickness == 0:
+            raise RequestValidationError(
+                "Only Bare shielding may use reference 0"
+            )
+
+        reference = payload.get(
+            "shielding_reference_mm"
         )
 
-    if thickness not in SHIELDING_THICKNESSES_MM:
+        if (
+            reference is not None
+            and reference != thickness
+        ):
+            raise RequestValidationError(
+                "preset shielding_reference_mm must "
+                "match shielding_thickness_mm"
+            )
+
+        actual = payload.get(
+            "shielding_actual_thickness_mm",
+            thickness,
+        )
+
+        _validate_finite_number(
+            actual,
+            "shielding_actual_thickness_mm",
+            allow_zero=normalized_material == "Bare",
+        )
+
+    else:
+        custom_thickness = _validate_finite_number(
+            thickness,
+            "shielding_thickness_mm",
+            allow_zero=False,
+        )
+
+        actual = _validate_finite_number(
+            payload.get(
+                "shielding_actual_thickness_mm",
+                thickness,
+            ),
+            "shielding_actual_thickness_mm",
+            allow_zero=False,
+        )
+
+        if not math.isclose(
+            custom_thickness,
+            actual,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise RequestValidationError(
+                "custom thickness fields do not match"
+            )
+
+        reference = payload.get(
+            "shielding_reference_mm"
+        )
+
+        if reference is not None:
+            _validate_finite_number(
+                reference,
+                "shielding_reference_mm",
+                allow_zero=True,
+            )
+
+    configuration_id = payload.get(
+        "shielding_configuration_id"
+    )
+
+    if (
+        configuration_id is not None
+        and not isinstance(configuration_id, str)
+    ):
         raise RequestValidationError(
-            f"Unsupported shielding thickness: {thickness}"
+            "shielding_configuration_id must be a string"
+        )
+
+    campaign_metadata = payload.get(
+        "campaign_metadata"
+    )
+
+    if (
+        campaign_metadata is not None
+        and not isinstance(campaign_metadata, dict)
+    ):
+        raise RequestValidationError(
+            "campaign_metadata must be a JSON object"
         )
 
     duration_s = payload["duration_s"]
 
-    # bool is an int subclass -> reject before the numeric range check.
     if isinstance(duration_s, bool) or not isinstance(
-        duration_s, (int, float)
+        duration_s,
+        (int, float),
     ):
         raise RequestValidationError(
             "duration_s must be a positive number"
@@ -229,6 +389,7 @@ def validate_request_payload(
         validate_exact_fields(
             payload,
             START_REQUIRED_FIELDS,
+            START_OPTIONAL_FIELDS,
         )
         validate_common_fields(payload)
         validate_start_request(payload)

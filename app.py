@@ -1,7 +1,7 @@
-"""Entry point for the Jetson Proton Test Coordinator."""
+"""Launch the Melagen Lab Test Coordinator in mock mode."""
 
-from coordinator.ui import run
+from app_campaign_mock import main
 
 
 if __name__ == "__main__":
-    run()
+    main()
