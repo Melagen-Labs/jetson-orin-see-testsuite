@@ -77,9 +77,14 @@ def main():
     print(f"[arbiter] target DUT: {args.host}")
 
     # 1. Heartbeat listener -- its own window so the operator can watch seq climb.
+    # The listener now persists events to a JSONL log; anchor it inside the
+    # coordinator's arbiter_logs tree (its default is CWD-relative, which would
+    # scatter logs wherever this launcher happened to be invoked from).
+    hb_log = os.path.join(logs, "heartbeat", "heartbeat_log.jsonl")
     new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)  # Windows; 0 elsewhere
-    print("[arbiter] starting heartbeat listener (UDP 5555) in a new window...")
-    subprocess.Popen([py, HB_LISTENER, "--port", "5555", "--timeout", "5"],
+    print(f"[arbiter] starting heartbeat listener (UDP 5555, log: {hb_log})...")
+    subprocess.Popen([py, HB_LISTENER, "--port", "5555", "--timeout", "5",
+                      "--log-file", hb_log],
                      creationflags=new_console)
 
     # 2. Live log-pull loop -- background thread.
