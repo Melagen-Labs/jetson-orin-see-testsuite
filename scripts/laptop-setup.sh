@@ -26,13 +26,18 @@ set -euo pipefail
 echo "== flash-laptop setup =="
 
 # 0. Persistence check ---------------------------------------------------------
-if grep -qw persistent /proc/cmdline; then
-    echo "[ok] booted with 'persistent' -- this session's changes survive reboot"
+# Three possible hosts: the installed PNY system (normal disk root -- always
+# persistent), the live stick booted WITH 'persistent', or the live stick
+# without it (everything below is lost at shutdown).
+if ! grep -q ' / overlay' /proc/mounts; then
+    echo "[ok] installed system (melagen-flash-host) -- persistent by nature"
+elif grep -qw persistent /proc/cmdline; then
+    echo "[ok] live session booted with 'persistent' -- changes survive reboot"
 else
-    echo "[warn] NON-PERSISTENT session: everything below is lost at shutdown."
-    echo "       To fix permanently, reboot and add 'persistent' at the GRUB"
-    echo "       'linux' line (press 'e', append the word, Ctrl-X). The"
-    echo "       'writable' partition this needs already exists on the stick."
+    echo "[warn] NON-PERSISTENT live session: everything below is lost at"
+    echo "       shutdown. Either boot the installed PNY stick instead, or"
+    echo "       reboot and add 'persistent' at the GRUB 'linux' line"
+    echo "       (press 'e', append the word, Ctrl-X)."
 fi
 
 # 1. Password for the live 'ubuntu' user (SSH password login needs one) --------
