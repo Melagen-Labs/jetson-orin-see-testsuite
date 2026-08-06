@@ -21,6 +21,14 @@ the **ARMED** arming model, and how to stop it.
 the ARMED flag for the two workloads). The per-unit commands below are the manual
 equivalent, if you install a board by hand.
 
+> **The current sampler is deliberately NOT a unit.** `jetson/power/current_logger.py`
+> (channel 5, baseline runs) is started and stopped as a subprocess by
+> `test_control` for the length of one run, so a current capture begins and ends
+> exactly with the workloads it measures. There is nothing to install, enable, or
+> arm — see [`CONTROL_INTERFACE.md`](CONTROL_INTERFACE.md) (`BASELINE_TEST`). It
+> writes to `/var/log/radtest/power/`, which it creates with the same owner/mode as
+> the parent log dir so `radpull` can fetch the CSV.
+
 > **Memory testing is GPU-only.** The campaign minimizes CPU workload, so only
 > the GPU DRAM tester (`mem_check_gpu.service`, `target:"gpu"`) is deployed. The
 > CPU/system-RAM tester (§2a) is the same `mem_check.py` with `target:"cpu"` and

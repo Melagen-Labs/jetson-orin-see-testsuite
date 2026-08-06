@@ -40,7 +40,7 @@ Validated against (mirrors the sender's spec, held in `config/test_control.json`
 | Field | Rule |
 |---|---|
 | `protocol_version` | must equal `1` |
-| `command` | `START_TEST` (or `STOP_TEST`, see below) |
+| `command` | `START_TEST` (or `STOP_TEST` / `BASELINE_TEST`, see below) |
 | `beam_energy_mev` | one of `53, 100, 200` |
 | `shielding_material` | one of `Aluminium, MLC1, MLC2` |
 | `shielding_thickness_mm` | one of `8, 12, 16` |
@@ -146,6 +146,96 @@ each channel**. The coordinator's `StopTestRequest` also carries a
 **`target_request_id`** (the START it cancels; its own `request_id` is a fresh
 uuid) — we accept that extra field, stop all channels regardless, and log
 `target_request_id` so a stop can be correlated to its start.
+
+## BASELINE_TEST — the no-beam reference run
+
+A **baseline** is a normal test run with the beam off, plus a current capture. The
+coordinator GUI has its own **Baseline Test** button and a duration in **minutes**;
+pressing it sends:
+
+```json
+{
+  "protocol_version": 1,
+  "command": "BASELINE_TEST",
+  "request_id": "unique-request-id",
+  "duration_s": 3600,
+  "duration_minutes": 60,
+  "sent_at_utc": "2026-08-06T15:00:00.000Z"
+}
+```
+
+| Field | Rule |
+|---|---|
+| `protocol_version`, `command`, `request_id`, `sent_at_utc` | required |
+| `duration_s` | **optional**; positive number ≤ `max_duration_s`. Default `default_baseline_duration_s` (3600) |
+| `duration_minutes` | informational echo of the operator's entry; the DUT acts on `duration_s` |
+
+**No beam parameters are accepted** — the beam is off during a baseline, so an
+energy/shielding value would record a condition that never existed. The channel
+configs get `beam_energy: "none"`, `shield_config: "none"`, which is also how a
+baseline row is told apart from beam data downstream.
+
+On the DUT it does everything `START_TEST` does — same metadata write, same ARMED
+flags, same `systemctl restart` of **`cuda_particles` + `mem_check_gpu`**, same
+DUT-owned auto-stop timer — and additionally starts
+[`jetson/power/current_logger.py`](../jetson/power/current_logger.py), which samples
+the module's INA3221 `VDD_IN` rail (one sample / 5 s by default) into a CSV. Running
+the real workloads is the point: the current envelope has to describe the machine
+we actually test, not an idle board.
+
+The START ack names the CSV so the arbiter knows what to collect:
+
+```json
+"baseline": {
+  "csv": "/var/log/radtest/power/baseline_current_orin-nano-01_20260806T150000Z.csv",
+  "csv_name": "baseline_current_orin-nano-01_20260806T150000Z.csv",
+  "summary_path": "…/baseline_current_orin-nano-01_20260806T150000Z.csv.summary.json",
+  "interval_s": 5.0, "expected_samples": 720
+}
+```
+
+and the STOP (or auto-stop) reply carries the finished stats alongside the usual
+SEE `summary`:
+
+```json
+"baseline": {
+  "run_id": "…", "csv_name": "…", "samples": 720, "sensor_failures": 0,
+  "duration_s": 3597.95, "stopped_early": false, "exit_code": 0,
+  "current_ma": {"min": 1880, "mean": 1922.7, "max": 2040},
+  "voltage_mv": {"min": 4968, "mean": 4968.0, "max": 4968},
+  "power_mw":   {"min": 9340, "mean": 9551.0, "max": 10135},
+  "rolling_average_ma": {"min": 1892.8, "mean": 1922.7, "max": 1969.6}
+}
+```
+
+The sampler is a **subprocess this receiver owns**, not a systemd unit, so the
+capture starts and ends exactly with the workloads it measures. It also
+self-terminates at `duration_s`, so the CSV still completes if the receiver is
+restarted mid-run, and it finalizes on SIGTERM, so an early **Stop Test** yields
+complete stats for the samples actually taken. A sampler that fails to start
+**REJECTS** the command — on a baseline the CSV is the whole deliverable, so a
+silent partial success would be worse than a clear failure.
+
+Configured under `current_logger` in `config/test_control.json` (`interval_s`,
+`rolling_window`, `rail`, `csv_dir`, `hwmon` to pin the sysfs path if auto-detect
+fails, and `on_start_test` — **false**, so beam runs are unchanged until the
+campaign decides to log current during them too).
+
+The CSV columns are identical to the 2026-08-01 reference capture
+([`baseline_current_noSEE_orin-nano-01_20260801.csv`](baseline_current_noSEE_orin-nano-01_20260801.csv)),
+so old and new baselines concatenate without a converter. The arbiter's log pull
+mirrors `/var/log/radtest/power/` like any other channel, and the GUI copies the
+CSV into its `results/baseline_<N>.csv`.
+
+To sample current by hand, without the GUI:
+
+```bash
+sudo python3 /home/melagen/see-testsuite/jetson/power/current_logger.py \
+     --out /var/log/radtest/power/baseline.csv --duration-s 3600 --interval-s 5
+```
+
+That samples current **only** — it does not start the workloads, so use the GUI
+button (or `systemctl start` the two channels yourself) for a true baseline.
 
 ## Metadata note (campaign vs dev)
 

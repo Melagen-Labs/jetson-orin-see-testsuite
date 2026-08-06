@@ -17,6 +17,37 @@ Newest first.
 > made to the NASA SMRT repo**; SMRT is not vendored — `mem_check.py` is our own
 > tester using SMRT's method only as a reference.
 
+## 2026-08-06
+
+### Capability: baselines are now a button, and this repo owns a current sampler
+
+A baseline current run was previously a manual capture with a collector that lives
+outside this repo (the 2026-08-01 reference CSV came from Ansh and Daniel's
+`melagen-jetson-current-baseline`). Operators need to take baselines per board
+across the 7-DUT fleet, so the capability now lives in the campaign tooling:
+
+- **New `BASELINE_TEST` command** (protocol v1, additive — `START_TEST`/`STOP_TEST`
+  are unchanged). It starts the **same workloads a beam run does** (`cuda_particles`
+  + `mem_check_gpu`), with `beam_energy`/`shield_config` recorded as **`"none"`**,
+  and adds a current capture for the same duration. Beam parameters are **not**
+  accepted: the beam is off, and recording one would describe a run that never
+  happened. Contract in [`CONTROL_INTERFACE.md`](CONTROL_INTERFACE.md).
+- **New `jetson/power/current_logger.py`** — samples the module's on-board INA3221
+  `VDD_IN` rail via hwmon (default 1 sample / 5 s) to a CSV whose columns are
+  **identical to the 2026-08-01 reference capture**, so old and new baselines
+  compare directly. **No hardware is added.** Failed sensor reads are written as
+  flagged rows rather than silently shortening a run.
+- **Coordinator GUI: a "Baseline Test" button** with the length in **minutes**
+  (default 60). Stop Test ends either kind of run; the CSV is copied to
+  `results/baseline_<N>.csv` and the popup shows min/mean/max current. *That change
+  is in the teammate-owned `melagen-test-coordinator` repo and needs a PR there.*
+- **Decision unchanged:** current logging stays **off** during beam runs
+  (`current_logger.on_start_test: false`) until the campaign decides otherwise, and
+  the upper-current limit is still **unset in code** pending Daniel's approval.
+- **Status: not yet run on hardware.** Verified by 36 offline unit tests plus an
+  end-to-end command → capture → CSV run against a simulated INA3221. The board-side
+  proof (real sensor, real workloads, radpull fetch) is still outstanding.
+
 ## 2026-08-03
 
 ### Decision: channel 5 goes software-only; retired channels removed

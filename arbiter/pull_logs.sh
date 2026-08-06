@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pull_logs.sh -- arbiter-side log puller (build plan section 0 step 3, section 4 step 6)
 #
-# Rsyncs the DUT's memory/, compute/, and boot_state/ log directories plus
+# Rsyncs the DUT's memory/, compute/, boot_state/, and power/ log directories plus
 # /sys/fs/pstore/* to the arbiter's local log tree over SSH key auth. Safe to run
 # unattended and repeatedly -- from arbiter_main.py on a timer, or from cron, or
 # by hand after the DUT's ethernet reconnects. It never blocks: if the DUT is
@@ -76,9 +76,17 @@ fi
 # Pull one channel dir. rsync syncs the whole dir (with live excludes); the scp
 # fallback pulls only *.jsonl in live mode (skipping dumps) and the whole dir in
 # full mode -- same net effect as the rsync excludes.
-pull_channel() {   # $1 = sub-dir (memory|compute|boot_state)
+pull_channel() {   # $1 = sub-dir (memory|compute|boot_state|power)
     local sub="$1"
     mkdir -p "${LOCAL_LOG_DIR}/${sub}"
+    # Live-mode scp needs an explicit file list. The workload channels emit JSONL;
+    # power/ also holds the baseline CSV + its summary sidecar, and those ARE the
+    # deliverable of a baseline run, so they must come across on every live pull
+    # (they are ~100 kB for a 1-hour capture -- nothing like the see_dumps).
+    local live_globs='*.jsonl'
+    if [ "${sub}" = "power" ]; then
+        live_globs='*.jsonl *.csv *.summary.json'
+    fi
     if [ -n "${HAVE_RSYNC}" ]; then
         rsync -az --append-verify \
             "${LIVE_EXCLUDES[@]+"${LIVE_EXCLUDES[@]}"}" \
@@ -94,10 +102,13 @@ pull_channel() {   # $1 = sub-dir (memory|compute|boot_state)
             "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
             || echo "pull_logs: scp of ${sub} failed (DUT may be down/rebooting)" >&2
     else
-        scp -q ${SSH_OPTS} \
-            "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/*.jsonl" \
-            "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
-            || echo "pull_logs: scp of ${sub} jsonl failed (DUT may be down/rebooting)" >&2
+        local pattern
+        for pattern in ${live_globs}; do
+            scp -q ${SSH_OPTS} \
+                "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/${pattern}" \
+                "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
+                || echo "pull_logs: scp of ${sub} ${pattern} failed (none yet, or DUT down)" >&2
+        done
     fi
 }
 
@@ -112,7 +123,7 @@ pull_remote_file() {   # $1 = remote path, $2 = local dest
     fi
 }
 
-for sub in memory compute boot_state; do pull_channel "${sub}"; done
+for sub in memory compute boot_state power; do pull_channel "${sub}"; done
 
 if [ "${PULL_MODE}" != "full" ]; then
     echo "pull_logs: live mode -- JSONL only (see_dumps/pstore/sidecars deferred to PULL_MODE=full)"

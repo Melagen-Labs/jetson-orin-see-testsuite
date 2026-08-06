@@ -136,7 +136,7 @@ sudo -u radpull mkdir -p /home/radpull/.ssh && sudo chmod 700 /home/radpull/.ssh
 echo 'PASTE_ARBITER_PUBLIC_KEY' | sudo tee -a /home/radpull/.ssh/authorized_keys   # per-MACHINE key
 sudo chown -R radpull:radpull /home/radpull/.ssh && sudo chmod 600 /home/radpull/.ssh/authorized_keys
 
-sudo mkdir -p /var/log/radtest/{compute,memory,boot_state}
+sudo mkdir -p /var/log/radtest/{compute,memory,boot_state,power}   # power/ = baseline current CSVs
 sudo chown -R melagen:melagen /var/log/radtest && sudo chmod -R 755 /var/log/radtest
 ```
 (Authoritative per-service user/permissions: [`SERVICES.md`](SERVICES.md).)

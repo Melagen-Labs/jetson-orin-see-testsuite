@@ -36,20 +36,32 @@ DEFAULT_COORD = os.path.join(BASE, "melagen-test-coordinator")
 DUT_LOG_DIR = "/var/log/radtest"
 
 
+# Per-channel file patterns to pull. power/ carries the baseline current CSV and
+# its summary sidecar as well as the JSONL -- that CSV is the deliverable of a
+# BASELINE_TEST, and the GUI copies it out of here into results/.
+PULL_PATTERNS = {
+    "compute": ("*.jsonl",),
+    "memory": ("*.jsonl",),
+    "boot_state": ("*.jsonl",),
+    "power": ("*.jsonl", "*.csv", "*.summary.json"),
+}
+
+
 def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
-    """Every 3 s, scp the DUT's JSONL event logs into <logs>/<channel>/."""
+    """Every 3 s, scp the DUT's event logs (and baseline CSVs) into <logs>/<channel>/."""
     ssh_opts = ["-i", ssh_key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
                 "-o", "StrictHostKeyChecking=accept-new"]
     while not stop.is_set():
-        for sub in ("compute", "memory", "boot_state"):
+        for sub, patterns in PULL_PATTERNS.items():
             dest = os.path.join(logs, sub)
             os.makedirs(dest, exist_ok=True)
-            # The glob is expanded on the DUT by its shell (scp passes it through).
-            subprocess.run(
-                ["scp", "-q", *ssh_opts,
-                 f"{dut_user}@{dut_host}:{DUT_LOG_DIR}/{sub}/*.jsonl", dest + os.sep],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+            for pattern in patterns:
+                # The glob is expanded on the DUT by its shell (scp passes it through).
+                subprocess.run(
+                    ["scp", "-q", *ssh_opts,
+                     f"{dut_user}@{dut_host}:{DUT_LOG_DIR}/{sub}/{pattern}", dest + os.sep],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
         stop.wait(3)
 
 

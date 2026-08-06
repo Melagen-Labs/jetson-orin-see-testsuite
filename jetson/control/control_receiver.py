@@ -37,6 +37,12 @@ Behaviour:
     each channel's ARMED flag; `systemctl restart` each channel service. Restart
     (not just start) so a START with new beam params re-applies them even if a
     test is already running.
+  * BASELINE_TEST -> the same start, with the beam metadata set to "none" and the
+    INA3221 current sampler (jetson/power/current_logger.py) started alongside for
+    the same duration. It runs the SAME workloads a beam run does, so the captured
+    current envelope describes the real test-day load; the STOP/auto-stop reply
+    carries a `baseline` block naming the CSV and its min/mean/max. No beam params
+    are accepted -- a baseline is measured with the beam off.
   * STOP_TEST  -> remove each ARMED flag; `systemctl stop` each channel service.
     The coordinator (melagen-test-coordinator) sends STOP_TEST with an extra
     `target_request_id` (the START it cancels; its own `request_id` is a fresh
@@ -74,8 +80,9 @@ DEFAULTS = {
 
     # --- contract validation (must match the arbiter/teammate's sender) ------
     "protocol_version": 1,
-    "supported_commands": ["START_TEST", "STOP_TEST"],
+    "supported_commands": ["START_TEST", "STOP_TEST", "BASELINE_TEST"],
     "default_duration_s": 100,         # DUT-owned run timer when START omits duration_s
+    "default_baseline_duration_s": 3600,  # BASELINE_TEST default (1 h, the reference run)
     "max_duration_s": 86400,           # sanity cap (24 h) on an operator-supplied duration
     "beam_energies_mev": [50, 63, 125, 200],
     "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
@@ -102,6 +109,25 @@ DEFAULTS = {
             "log": "/var/log/radtest/memory/mem_check_gpu.jsonl",
         },
     ],
+
+    # Channel 5 (current) is NOT a systemd service: it is a plain subprocess this
+    # receiver owns for the length of one run, so a baseline capture starts and
+    # ends exactly with the workloads it is measuring. `on_start_test` is false so
+    # a beam-day START_TEST behaves exactly as it does today -- flip it only if the
+    # campaign decides to log current during beam runs too.
+    "current_logger": {
+        "enabled": True,
+        "script": "/home/melagen/see-testsuite/jetson/power/current_logger.py",
+        "python": "python3",
+        "csv_dir": "/var/log/radtest/power",
+        "jsonl": "/var/log/radtest/power/current.jsonl",
+        "interval_s": 5.0,
+        "rolling_window": 10,
+        "rail": "VDD_IN",
+        "hwmon": None,                 # None = auto-detect; set to pin the sysfs dir
+        "on_start_test": False,
+        "stop_grace_s": 15.0,          # let it finish its last sample + summary
+    },
 }
 
 # START_TEST must carry all of these (the arbiter's REQUIRED_FIELDS).
@@ -111,6 +137,9 @@ REQUIRED_START_FIELDS = (
 )
 # STOP_TEST needs only enough to identify the request (no beam params to stop).
 REQUIRED_STOP_FIELDS = ("protocol_version", "command", "request_id", "sent_at_utc")
+# BASELINE_TEST carries no beam params -- a baseline is measured with the beam OFF,
+# so accepting an energy/shield here would put a fiction into the run metadata.
+REQUIRED_BASELINE_FIELDS = ("protocol_version", "command", "request_id", "sent_at_utc")
 
 # The coordinator's GUI accepts a reply ONLY if status == "ACCEPTED"
 # (coordinator/ui.py::_validate_response); any other value is treated as a
@@ -154,13 +183,26 @@ def validate(msg, cfg):
         # can't validate fields without a known command
         return cmd, errors
 
-    required = REQUIRED_START_FIELDS if cmd == "START_TEST" else REQUIRED_STOP_FIELDS
+    required = {
+        "START_TEST": REQUIRED_START_FIELDS,
+        "BASELINE_TEST": REQUIRED_BASELINE_FIELDS,
+    }.get(cmd, REQUIRED_STOP_FIELDS)
     for f in required:
         if f not in msg:
             errors.append("missing required field %r" % f)
 
     if msg.get("protocol_version") != cfg["protocol_version"]:
         errors.append("protocol_version must be %s" % cfg["protocol_version"])
+
+    # duration_s is optional on both run commands (each has its own default) but
+    # must be a positive number within the sanity cap when present. bool is an int
+    # subclass -> reject it explicitly.
+    if cmd in ("START_TEST", "BASELINE_TEST") and "duration_s" in msg:
+        d = msg.get("duration_s")
+        if isinstance(d, bool) or not isinstance(d, (int, float)):
+            errors.append("duration_s must be a positive number")
+        elif not (0 < d <= cfg["max_duration_s"]):
+            errors.append("duration_s must be > 0 and <= %s" % cfg["max_duration_s"])
 
     if cmd == "START_TEST":
         if msg.get("beam_energy_mev") not in cfg["beam_energies_mev"]:
@@ -169,14 +211,6 @@ def validate(msg, cfg):
             errors.append("shielding_material must be one of %s" % cfg["shielding_materials"])
         if msg.get("shielding_thickness_mm") not in cfg["shielding_thicknesses_mm"]:
             errors.append("shielding_thickness_mm must be one of %s" % cfg["shielding_thicknesses_mm"])
-        # duration_s is optional (defaults to default_duration_s). If present it must
-        # be a positive number within the sanity cap. bool is an int subclass -> reject.
-        if "duration_s" in msg:
-            d = msg.get("duration_s")
-            if isinstance(d, bool) or not isinstance(d, (int, float)):
-                errors.append("duration_s must be a positive number")
-            elif not (0 < d <= cfg["max_duration_s"]):
-                errors.append("duration_s must be > 0 and <= %s" % cfg["max_duration_s"])
 
     return cmd, errors
 
@@ -220,14 +254,32 @@ def systemctl(action, service, cfg):
         return False, "%s error: %s" % (action, exc)
 
 
-def do_start(msg, cfg):
-    """Apply metadata, arm, and (re)start every channel. Returns per-channel results."""
-    meta = {
+def run_metadata(msg, baseline=False):
+    """Build the run metadata written into each channel config.
+
+    A baseline runs with the beam OFF, so its records say so explicitly ("none")
+    rather than inheriting whatever energy/shield the last beam run left behind --
+    that is what keeps baseline rows from ever being mistaken for beam data.
+    """
+    if baseline:
+        return {"run_id": msg["request_id"], "beam_energy": "none",
+                "shield_config": "none"}
+    return {
         "run_id": msg["request_id"],
         "beam_energy": "%sMeV" % msg["beam_energy_mev"],
         "shield_config": "%s_%smm" % (msg["shielding_material"], msg["shielding_thickness_mm"]),
         # fluence_source is not in the arbiter contract -> left as each config has it.
     }
+
+
+def do_start(msg, cfg, baseline=False):
+    """Apply metadata, arm, and (re)start every channel. Returns per-channel results.
+
+    Identical for a beam run and a baseline run -- that is the point: a baseline
+    must exercise the same stack (cuda_particles + mem_check_gpu) that beam day
+    will, or its current envelope describes a machine we never actually test.
+    """
+    meta = run_metadata(msg, baseline=baseline)
     results = []
     for ch in cfg["channels"]:
         r = {"name": ch["name"], "service": ch["service"]}
@@ -267,6 +319,151 @@ def do_stop(cfg):
             r["ok"], r["detail"] = False, "disarm/stop error: %s" % exc
         results.append(r)
     return results
+
+
+# --- channel 5: the current sampler (baseline runs) -------------------------
+#
+# Unlike the workload channels this is not a systemd unit. It is a subprocess the
+# receiver starts and stops with the run, because a current trace is only useful
+# when its start/end line up exactly with the workloads it measured. The sampler
+# also self-terminates at `--duration-s`, so the capture still completes if this
+# receiver is restarted mid-run.
+
+def _read_json(path):
+    """Read a JSON file, or return None if it is missing/unreadable/corrupt."""
+    try:
+        with open(path, "r", encoding="utf-8") as fp:
+            return json.load(fp)
+    except (OSError, ValueError):
+        return None
+
+
+def _prepare_csv_dir(path):
+    """Create the CSV directory, inheriting /var/log/radtest's owner+mode.
+
+    We run as root, so a plain makedirs would leave root:root 0755 and the
+    arbiter's low-privilege `radpull` user could not fetch the CSV (the other log
+    dirs are melagen:radlog 2750). Best-effort -- a failure here is not worth
+    losing a baseline run over, it just means pulling as root instead.
+    """
+    os.makedirs(path, exist_ok=True)
+    if not hasattr(os, "chown"):                      # non-POSIX dev box; DUT is Linux
+        return
+    parent = os.path.dirname(path.rstrip("/")) or "/"
+    try:
+        st = os.stat(parent)
+        os.chown(path, st.st_uid, st.st_gid)
+        os.chmod(path, st.st_mode & 0o7777)
+    except OSError as exc:                            # noqa: BLE001
+        sys.stderr.write("[test_control] could not match %s perms to %s: %s\n"
+                         % (path, parent, exc))
+
+
+def start_current_logger(cfg, run_id, duration_s, state, lock):
+    """Start the INA3221 sampler for this run.
+
+    Returns (channel_result, baseline_info). `channel_result` joins the reply's
+    `channels` list so a sampler that fails to start REJECTS the command -- on a
+    baseline run the CSV is the entire deliverable, so a silent partial success
+    would be worse than a clear failure.
+    """
+    lg = cfg.get("current_logger") or {}
+    name = "current"
+    if not lg.get("enabled", True):
+        return ({"name": name, "service": "current_logger.py", "ok": True,
+                 "detail": "disabled in config"}, None)
+
+    script = lg.get("script")
+    csv_dir = lg.get("csv_dir", "/var/log/radtest/power")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    csv_name = "baseline_current_%s_%s.csv" % (hostname(), stamp)
+    csv_path = os.path.join(csv_dir, csv_name)
+    summary_path = csv_path + ".summary.json"
+
+    cmd = [
+        lg.get("python", "python3"), script,
+        "--out", csv_path,
+        "--duration-s", str(duration_s),
+        "--interval-s", str(lg.get("interval_s", 5.0)),
+        "--rolling-window", str(lg.get("rolling_window", 10)),
+        "--rail", lg.get("rail", "VDD_IN"),
+        "--run-id", run_id,
+        "--jetson-id", "auto",
+        "--summary", summary_path,
+    ]
+    if lg.get("jsonl"):
+        cmd += ["--jsonl", lg["jsonl"]]
+    if lg.get("hwmon"):
+        cmd += ["--hwmon", lg["hwmon"]]
+
+    # The sampler takes its first reading at t=0, so a duration that divides evenly
+    # yields duration/interval samples. The epsilon keeps binary-float division
+    # (0.3/0.05 == 5.999...) from under-reporting by one.
+    interval_s = float(lg.get("interval_s", 5.0) or 5.0)
+    info = {
+        "csv": csv_path,
+        "csv_name": csv_name,
+        "summary_path": summary_path,
+        "interval_s": interval_s,
+        "expected_samples": int(duration_s / interval_s + 1e-6),
+    }
+
+    try:
+        if not script or not os.path.exists(script):
+            raise FileNotFoundError("current_logger.py not found at %r" % script)
+        _prepare_csv_dir(csv_dir)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, close_fds=True)
+    except Exception as exc:                          # noqa: BLE001 - report to the arbiter
+        return ({"name": name, "service": "current_logger.py", "ok": False,
+                 "detail": "current logger failed to start: %s" % exc}, None)
+
+    with lock:
+        state["current_logger"] = dict(info, proc=proc, run_id=run_id)
+    return ({"name": name, "service": "current_logger.py", "ok": True,
+             "detail": "sampling to %s" % csv_name}, info)
+
+
+def stop_current_logger(cfg, state, lock):
+    """Stop the sampler (if running) and return its summary dict, or None.
+
+    Called from both the manual STOP and the DUT-owned auto-stop. When the run hit
+    its full duration the sampler has usually exited on its own already, so we
+    wait briefly before signalling; SIGTERM makes it write the summary sidecar, so
+    an operator's early STOP still yields complete stats for the samples taken.
+    """
+    lg = cfg.get("current_logger") or {}
+    grace = float(lg.get("stop_grace_s", 15.0))
+
+    with lock:
+        entry = state.pop("current_logger", None)
+    if entry is None:
+        return state.get("last_baseline")
+
+    proc = entry["proc"]
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        proc.terminate()                              # SIGTERM -> clean finalize
+        try:
+            proc.wait(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()                               # last resort; CSV rows survive
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                pass
+
+    summary = _read_json(entry["summary_path"]) or {
+        "run_id": entry["run_id"],
+        "error": "sampler wrote no summary (killed before it could finalize?)",
+    }
+    summary.setdefault("csv", entry["csv"])
+    summary.setdefault("csv_name", entry["csv_name"])
+    summary["exit_code"] = proc.returncode
+    with lock:
+        state["last_baseline"] = summary
+    return summary
 
 
 def log_control(cfg, record):
@@ -421,6 +618,7 @@ def auto_stop(cfg, run_id, state, lock):
         state.pop("auto_stop_timer", None)
         state.pop("auto_stop_run_id", None)
     results = do_stop(cfg)
+    baseline = stop_current_logger(cfg, state, lock)
     all_ok = all(r["ok"] for r in results)
     summary = None
     try:
@@ -428,7 +626,8 @@ def auto_stop(cfg, run_id, state, lock):
     except Exception as exc:                    # noqa: BLE001 - reporting never fails the stop
         summary = {"run_id": run_id, "error": "summary failed: %s" % exc}
     log_control(cfg, {"event": "auto_stop", "run_id": run_id,
-                      "summary": summary, "channels": results, "ok": all_ok})
+                      "summary": summary, "baseline": baseline,
+                      "channels": results, "ok": all_ok})
 
 
 def schedule_auto_stop(cfg, run_id, duration_s, state, lock):
@@ -474,27 +673,51 @@ def handle_message(raw, cfg, state, lock):
             return reply
         state["last_request_id"] = msg["request_id"]
 
-    if cmd == "START_TEST":
-        meta, results = do_start(msg, cfg)
+    if cmd in ("START_TEST", "BASELINE_TEST"):
+        # A baseline is a normal test run with the beam off, plus the current
+        # sampler -- same channels, same arming, same DUT-owned timer.
+        baseline = cmd == "BASELINE_TEST"
+        # Any run replaces a previous one, so never leave an orphaned sampler
+        # writing into the last run's CSV.
+        stop_current_logger(cfg, state, lock)
+        meta, results = do_start(msg, cfg, baseline=baseline)
+        duration_s = msg.get(
+            "duration_s",
+            cfg["default_baseline_duration_s"] if baseline else cfg["default_duration_s"])
+
+        baseline_info = None
+        if baseline or (cfg.get("current_logger") or {}).get("on_start_test"):
+            power_result, baseline_info = start_current_logger(
+                cfg, msg["request_id"], duration_s, state, lock)
+            results.append(power_result)
+
         all_ok = all(r["ok"] for r in results)
         detail = "started" if all_ok else "one or more channels failed to start"
-        # DUT owns the run timer: auto-stop after duration_s (default 100). Arm it
-        # even on a partial start so any channel that DID come up is cleaned up. A
-        # later STOP or START cancels/replaces this timer.
-        duration_s = msg.get("duration_s", cfg["default_duration_s"])
+        # DUT owns the run timer: auto-stop after duration_s. Arm it even on a
+        # partial start so any channel that DID come up is cleaned up. A later
+        # STOP or START cancels/replaces this timer.
         schedule_auto_stop(cfg, msg["request_id"], duration_s, state, lock)
         reply.update(status=STATUS_ACCEPTED if all_ok else STATUS_REJECTED,
                      detail=detail, applied=meta, channels=results,
                      duration_s=duration_s)
+        if baseline_info:
+            reply["baseline"] = baseline_info
         if not all_ok:
             reply["error"] = detail
-        log_control(cfg, {"event": "start_test", "request_id": msg["request_id"],
+        log_control(cfg, {"event": "baseline_test" if baseline else "start_test",
+                          "request_id": msg["request_id"],
                           "applied": meta, "duration_s": duration_s,
+                          "baseline": baseline_info,
                           "channels": results, "ok": all_ok})
     else:  # STOP_TEST
         # A manual STOP cancels the DUT-owned timer (whichever fires first wins).
         cancel_auto_stop(state, lock)
         results = do_stop(cfg)
+        # Stop the current sampler too, and carry its stats back in the reply so a
+        # baseline run reports its CSV the moment the operator presses stop.
+        baseline = stop_current_logger(cfg, state, lock)
+        if baseline:
+            reply["baseline"] = baseline
         all_ok = all(r["ok"] for r in results)
         detail = "stopped" if all_ok else "one or more channels failed to stop"
         reply.update(status=STATUS_ACCEPTED if all_ok else STATUS_REJECTED,
@@ -516,11 +739,12 @@ def handle_message(raw, cfg, state, lock):
         log_control(cfg, {"event": "stop_test", "request_id": msg["request_id"],
                           "target_request_id": msg.get("target_request_id"),
                           "summary": reply.get("summary"),
+                          "baseline": reply.get("baseline"),
                           "channels": results, "ok": all_ok})
 
     with lock:
         state["last_channels"] = reply.get("channels", [])
-        if cmd == "START_TEST":
+        if cmd in ("START_TEST", "BASELINE_TEST"):
             state["last_start_run_id"] = msg["request_id"]
     return reply
 

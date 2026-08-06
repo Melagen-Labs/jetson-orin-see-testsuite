@@ -4,12 +4,26 @@
   "allowed_peers": [],
 
   "protocol_version": 1,
-  "supported_commands": ["START_TEST", "STOP_TEST"],
+  "supported_commands": ["START_TEST", "STOP_TEST", "BASELINE_TEST"],
   "beam_energies_mev": [50, 63, 125, 200],
   "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
   "shielding_thicknesses_mm": [8, 12, 16],
+  "default_baseline_duration_s": 3600,
 
   "control_log": "./logs/test_control.jsonl",
+
+  "current_logger": {
+    "enabled": true,
+    "script": "/home/melagen/see-testsuite/jetson/power/current_logger.py",
+    "python": "python3",
+    "csv_dir": "/var/log/radtest/power",
+    "jsonl": "/var/log/radtest/power/current.jsonl",
+    "interval_s": 5.0,
+    "rolling_window": 10,
+    "rail": "VDD_IN",
+    "on_start_test": false,
+    "stop_grace_s": 15.0
+  },
 
   "channels": [
     {
