@@ -89,7 +89,7 @@ def apply_campaign_ui(app: Any) -> None:
         "Jetson Proton Test Coordinator",
     )
     if title_label is not None:
-        title_label.configure(text="Melagen Lab Test Coordinator")
+        title_label.configure(text="MELAGEN LABS Test Coordinator")
 
     reference_label = _find_top_level_label(
         app,
@@ -702,7 +702,7 @@ def apply_campaign_ui(app: Any) -> None:
     )
     app.thickness_var.trace_add("write", lambda *_args: app._update_summary())
 
-    app.master.title("Melagen Lab Test Coordinator")
+    app.master.title("MELAGEN LABS Test Coordinator")
     app.master.geometry("900x1120")
     app.master.minsize(800, 940)
 

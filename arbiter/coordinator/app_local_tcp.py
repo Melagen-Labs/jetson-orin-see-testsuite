@@ -21,7 +21,7 @@ from coordinator.ui import TestCoordinatorApp
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Launch the Melagen Lab Test Coordinator GUI over TCP.",
+        description="Launch the MELAGEN LABS Test Coordinator GUI over TCP.",
     )
     parser.add_argument(
         "--host",

@@ -1,4 +1,4 @@
-"""Launch the Melagen Lab Test Coordinator in mock mode."""
+"""Launch the MELAGEN LABS Test Coordinator in mock mode."""
 
 from app_campaign_mock import main
 
