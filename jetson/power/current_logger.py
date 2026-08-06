@@ -12,7 +12,7 @@ arbiter sends `BASELINE_TEST` (see docs/CONTROL_INTERFACE.md), but it is a
 standalone program and can be run by hand:
 
     sudo python3 current_logger.py --out /var/log/radtest/power/baseline.csv \\
-                                   --duration-s 3600 --interval-s 5
+                                   --duration-s 3600 --interval-s 1
 
 **No hardware is added by this.** The INA3221 is already on the module; we only
 read its sysfs files. Reading is cheap (a few file reads every `--interval-s`),
@@ -60,8 +60,13 @@ from datetime import datetime, timezone
 # whole board's draw. The other INA3221 channels (VDD_CPU_GPU_CV, VDD_SOC) are
 # subsets of it and are not what an SEL shows up in first.
 DEFAULT_RAIL = "VDD_IN"
-DEFAULT_INTERVAL_S = 5.0
-DEFAULT_ROLLING_WINDOW = 10
+# 1 Hz. The 2026-08-01 reference capture used 5 s; 1 s resolves a current
+# excursion five times more sharply for the same negligible cost (two sysfs reads
+# per sample), and an hour is still only ~3600 rows.
+DEFAULT_INTERVAL_S = 1.0
+# Kept at ~50 s of smoothing, as the 5 s x 10 reference did, so the
+# rolling_average_ma column still means the same thing across old and new runs.
+DEFAULT_ROLLING_WINDOW = 50
 
 # hwmon directories to search, in order. The Tegra BSP has shipped this sensor
 # under both the upstream `ina3221` driver name and the older `ina3221x`.

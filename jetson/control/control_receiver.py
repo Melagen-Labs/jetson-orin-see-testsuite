@@ -123,8 +123,8 @@ DEFAULTS = {
         "python": "python3",
         "csv_dir": "/var/log/radtest/power",
         "jsonl": "/var/log/radtest/power/current.jsonl",
-        "interval_s": 5.0,
-        "rolling_window": 10,
+        "interval_s": 1.0,             # 1 Hz; the 2026-08-01 reference used 5 s
+        "rolling_window": 50,          # still ~50 s of smoothing, as 5 s x 10 was
         "rail": "VDD_IN",
         "hwmon": None,                 # None = auto-detect; set to pin the sysfs dir
         "on_start_test": False,

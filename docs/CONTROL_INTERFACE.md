@@ -179,7 +179,8 @@ On the DUT it does everything `START_TEST` does — same metadata write, same AR
 flags, same `systemctl restart` of **`cuda_particles` + `mem_check_gpu`**, same
 DUT-owned auto-stop timer — and additionally starts
 [`jetson/power/current_logger.py`](../jetson/power/current_logger.py), which samples
-the module's INA3221 `VDD_IN` rail (one sample / 5 s by default) into a CSV. Running
+the module's INA3221 `VDD_IN` rail (**1 Hz** by default; the 2026-08-01 reference
+capture used 5 s) into a CSV. Running
 the real workloads is the point: the current envelope has to describe the machine
 we actually test, not an idle board.
 
@@ -190,7 +191,7 @@ The START ack names the CSV so the arbiter knows what to collect:
   "csv": "/var/log/radtest/power/baseline_current_orin-nano-01_20260806T150000Z.csv",
   "csv_name": "baseline_current_orin-nano-01_20260806T150000Z.csv",
   "summary_path": "…/baseline_current_orin-nano-01_20260806T150000Z.csv.summary.json",
-  "interval_s": 5.0, "expected_samples": 720
+  "interval_s": 1.0, "expected_samples": 3600
 }
 ```
 
@@ -231,7 +232,7 @@ To sample current by hand, without the GUI:
 
 ```bash
 sudo python3 /home/melagen/see-testsuite/jetson/power/current_logger.py \
-     --out /var/log/radtest/power/baseline.csv --duration-s 3600 --interval-s 5
+     --out /var/log/radtest/power/baseline.csv --duration-s 3600 --interval-s 1
 ```
 
 That samples current **only** — it does not start the workloads, so use the GUI
