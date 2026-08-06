@@ -4,6 +4,7 @@ Closed system on a private tailnet; minor security laxity is acceptable for now.
 
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
+[V7] FLEET BLOCKER (found 2026-08-06 during pathfinder): master has a 512GB SSD but board 02 has 256GB — raw l4t_backup_restore images encode 512GB geometry (475GiB rootfs partition) and cannot restore onto smaller disks; partprobe rejects the GPT. The W→X spec edit worked (gate passed); size is the real blocker. DECIDED (Shiven, 2026-08-06): boards 02-07 are all 256GB. Plan: flash board 02 via l4t_initrd_flash (fresh 256GB layout + QSPI + master rootfs content), bring it fully up to date (repo main, channel 5, watchdog decision, setup-board.sh 02, validation), then BACK UP board 02 -> new 256GB-geometry image set on JETSON_BACKUP = the fleet master image for boards 03-07. Master 01 (512GB) stays content-identical dev/reference; fleet 02-07 bit-identical to each other.
 [V2] Watchdog armed at 2 min, but CRASH_RECOVERY.md expects ~10 s. Confirm intended or tighten.
 [V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
 [V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.

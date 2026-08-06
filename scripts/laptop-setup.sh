@@ -52,7 +52,8 @@ fi
 echo "[2/5] install packages (openssh-server, nfs-kernel-server, lbzip2, curl)"
 sudo add-apt-repository -y universe >/dev/null 2>&1 || true
 sudo apt-get update -qq
-sudo apt-get install -y openssh-server nfs-kernel-server lbzip2 curl
+sudo apt-get install -y openssh-server nfs-kernel-server lbzip2 curl \
+    sshpass abootimg libxml2-utils zstd binutils
 sudo systemctl enable --now ssh nfs-kernel-server
 
 # 3. Tailscale (remote access for the team) ------------------------------------
