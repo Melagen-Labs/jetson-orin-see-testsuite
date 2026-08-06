@@ -2,6 +2,26 @@ ISSUE TRACKER — orin-nano-01 audit, 2026-08-05
 ==============================================
 Closed system on a private tailnet; minor security laxity is acceptable for now.
 
+FLEET ROSTER (rollout 2026-08-06 evening, from the sealed 22401bc image):
+  orin-nano-01  100.82.168.92  rev W.1  512GB SSD (GPT repaired, extra space unallocated)  reflashed ex-master
+  orin-nano-02  100.85.59.81   rev X.1  256GB SSD  image donor
+  orin-nano-03  100.99.4.31    rev W.1  256GB SSD  single-pass restore
+  orin-nano-04  100.101.102.73 rev X.1  256GB SSD  manifest flip, initrd resume
+  orin-nano-05  100.88.87.26   rev X.1  256GB SSD  single-pass restore
+  orin-nano-06  100.117.40.116 rev X.1  256GB SSD  identity reset failed 1st try (duplicate node key vs 02) -> verified reset then enrolled
+  orin-nano-07  100.79.97.32   rev X.1  256GB SSD  single-pass, RESET_VERIFIED
+  orin-nano-08  100.85.82.54   rev X.1  256GB SSD  single-pass, RESET_VERIFIED
+ALL 8 BOARDS FLASHED, NAMED, AND ENROLLED from the one sealed 22401bc image (2026-08-06).
+Revision mix: W.1 = 01,03 / X.1 = 02,04,05,06,07,08 — manifest board_spec is edited
+per-target when it differs (routine; firmware identical, verified).
+Boards flap online/offline on the bench (power-supply sharing / NewlabMember WiFi),
+NOT a tailnet issue — 11 nodes vs a 100-device allowance. Irrelevant on beam day
+(direct Ethernet to the arbiter; Tailscale is remote-management only).
+Per-board flow: recovery (jumper) -> restore (manifest spec flip if rev differs) ->
+jumper off + boot -> auto identity reset -> setup-board.sh 0N (self-pulls repo tip) ->
+tailscale enroll. Clock note: first-boot logs show stale image-era timestamps until
+NTP syncs (~minutes) -- known artifact for log forensics.
+
 FLEET STATUS 2026-08-06 ~17:00: board 02 fully updated (repo f60c1ed, channel 5,
 own identity/golden/keys, pstore rule) and captured as THE FLEET IMAGE
 (tools/backup_restore/images/, native X.1 + 256GB geometry, SHA256-sealed).
