@@ -59,6 +59,15 @@ sudo apt-get install -y openssh-server nfs-kernel-server lbzip2 curl \
 # ^ the full dependency set greppable from the L4T R36.5 flash scripts
 #   ("apt-get install" hints + "not found" checks), minus docker (unused).
 #   Installed en masse so no flash ever dies mid-run on a missing host tool.
+# NVIDIA's own canonical prerequisite installer (run it too when the BSP
+# drive is mounted -- it is the vendor-blessed superset for flashing):
+if [ -x /media/ubuntu/JETSON_BACKUP/Linux_for_Tegra/tools/l4t_flash_prerequisites.sh ]; then
+    echo "      running NVIDIA l4t_flash_prerequisites.sh"
+    (cd /media/ubuntu/JETSON_BACKUP/Linux_for_Tegra && sudo ./tools/l4t_flash_prerequisites.sh)
+fi
+# A flash appliance must never self-update mid-campaign (dpkg lock grabs,
+# hotspot data burn) -- same policy as the DUTs:
+sudo systemctl mask unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 sudo systemctl enable --now ssh nfs-kernel-server
 
 # 3. Tailscale (remote access for the team) ------------------------------------
