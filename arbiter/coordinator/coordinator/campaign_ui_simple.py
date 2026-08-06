@@ -74,9 +74,9 @@ def apply_campaign_ui(app: Any) -> None:
     if app.thickness_var.get() not in {"8", "12", "16", CUSTOM_OPTION}:
         app.thickness_var.set("12")
 
-    title = _top_label(app, "Jetson Proton Test Coordinator")
+    title = _top_label(app, "Melagen Labs Proton Test Coordinator")
     if title is not None:
-        title.configure(text="MELAGEN LABS Test Coordinator")
+        title.configure(text="Melagen Labs Proton Test Coordinator")
     thickness_label = _top_label(app, "Shielding Thickness:")
     if thickness_label is not None:
         thickness_label.configure(text="Thickness (mm):")
@@ -654,7 +654,7 @@ def apply_campaign_ui(app: Any) -> None:
         app.rowconfigure(11, weight=1)
         app.rowconfigure(13, weight=0)
 
-    app.master.title("MELAGEN LABS Test Coordinator")
+    app.master.title("Melagen Labs Proton Test Coordinator")
     app.master.geometry("1040x900")
     app.master.minsize(900, 760)
     app._update_summary()

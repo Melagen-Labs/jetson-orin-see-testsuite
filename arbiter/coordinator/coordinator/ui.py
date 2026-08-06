@@ -1,4 +1,4 @@
-"""Tkinter interface for the Jetson Proton Test Coordinator."""
+"""Tkinter interface for the Melagen Labs Proton Test Coordinator."""
 
 from __future__ import annotations
 
@@ -60,14 +60,14 @@ SEE_POLL_MS = 2500
 SEE_POLL_SECONDS = SEE_POLL_MS / 1000
 DEFAULT_SEE_LOG_ROOT = "arbiter_logs"
 
-# Baseline runs: the DUT writes the current CSV into /var/log/radtest/power and the
-# arbiter's pull loop mirrors it here, so the GUI reads it off the local disk rather
-# than needing SSH itself. The pull is periodic, so the file can lag the STOP reply
-# by a few seconds -- we poll for it instead of declaring it missing on first look.
 # Dropdown entry that swaps the beam energy over to the free-text field beside it.
 # Not a number, so it can never be confused with a preset.
 CUSTOM_ENERGY_LABEL = "Custom..."
 
+# Baseline runs: the DUT writes the current CSV into /var/log/radtest/power and the
+# arbiter's pull loop mirrors it here, so the GUI reads it off the local disk rather
+# than needing SSH itself. The pull is periodic, so the file can lag the STOP reply
+# by a few seconds -- we poll for it instead of declaring it missing on first look.
 BASELINE_LOG_SUBDIR = "power"
 BASELINE_CSV_WAIT_S = 90
 BASELINE_CSV_POLL_S = 3
@@ -220,7 +220,7 @@ class TestCoordinatorApp(ttk.Frame):
         """Configure the main application window."""
 
         self.master.title(
-            "Jetson Proton Test Coordinator"
+            "Melagen Labs Proton Test Coordinator"
         )
         # Taller than before: the baseline controls add a row between the
         # start/stop buttons and the status line.
@@ -246,7 +246,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         title = ttk.Label(
             self,
-            text="Jetson Proton Test Coordinator",
+            text="Melagen Labs Proton Test Coordinator",
             font=("Segoe UI", 18, "bold"),
         )
         title.grid(

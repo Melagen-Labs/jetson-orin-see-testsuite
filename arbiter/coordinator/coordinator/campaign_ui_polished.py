@@ -133,7 +133,7 @@ def apply_campaign_ui_polished(app: Any) -> None:
                 pass
 
     for child in app.winfo_children():
-        if isinstance(child, ttk.Label) and child.cget("text") == "MELAGEN LABS Test Coordinator":
+        if isinstance(child, ttk.Label) and child.cget("text") == "Melagen Labs Proton Test Coordinator":
             child.configure(font=("Segoe UI", 20, "bold"))
             child.grid_configure(pady=(0, 16))
 
