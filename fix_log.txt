@@ -1,0 +1,27 @@
+ISSUE TRACKER — orin-nano-01 audit, 2026-08-05
+==============================================
+Closed system on a private tailnet; minor security laxity is acceptable for now.
+
+OPEN — CAMPAIGN READINESS / VERIFY
+----------------------------------
+[V7] FLEET BLOCKER (found 2026-08-06 during pathfinder): master has a 512GB SSD but board 02 has 256GB — raw l4t_backup_restore images encode 512GB geometry (475GiB rootfs partition) and cannot restore onto smaller disks; partprobe rejects the GPT. The W→X spec edit worked (gate passed); size is the real blocker. DECIDED (Shiven, 2026-08-06): boards 02-07 are all 256GB. Plan: flash board 02 via l4t_initrd_flash (fresh 256GB layout + QSPI + master rootfs content), bring it fully up to date (repo main, channel 5, watchdog decision, setup-board.sh 02, validation), then BACK UP board 02 -> new 256GB-geometry image set on JETSON_BACKUP = the fleet master image for boards 03-07. Master 01 (512GB) stays content-identical dev/reference; fleet 02-07 bit-identical to each other.
+[V2] Watchdog armed at 2 min, but CRASH_RECOVERY.md expects ~10 s. Confirm intended or tighten.
+[V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
+[V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.
+[V5] ARMED persists across reboots, so compute/memory log against the previous run_id between tests. Decide if acceptable or disarm between campaigns.
+
+OPEN — REMAINING FROM A2
+------------------------
+[A2] Deployed channel-5 state is now COMMITTED on-board (branch deployed-orin-nano-01-20260805, commit 5153b37, 30 files; board stays on this branch) and exported to nano-archive\ch5-deployed-20260805.bundle — but the board has no push credentials, so an owner still needs to push the branch to GitHub (e.g. git pull the bundle and push from their machine).
+
+COMPLETED 2026-08-05 (Claude, via SSH; everything deleted was first archived to nano-archive\nano-declutter-20260805.tar.gz)
+--------------------
+[V1] Resolved — original finding was partly a verification error (permission-masked ls read as "empty"; DT grep missed reserved-memory/). L4T ships a working ramoops carveout; sysrq-c panic test (user-approved) proved it: dmesg-ramoops-0 "Panic#1" + console-ramoops-0 present after auto-reboot. Fixed the real gap: /sys/fs/pstore dir was 0750 root-only — tmpfiles rule (0755) installed on the board and added to setup-board.sh; radpull read verified. PSTORE_SETUP.md rewritten to Orin reality. Caveat: records survive panic/warm reboot/watchdog reset but NOT a cold power cycle.
+[A1] Deleted stale pre-git copies ~/cuda_particles, ~/mem_check, ~/heartbeat.
+[A2-partial] Deleted 3 current-baseline backup dirs + 2 deploy zips from $HOME (commit/push still owed — see OPEN).
+[A3] Deleted ~/custom-shield-test-backup-20260805_001410 and ~/see-testsuite-local-before-dryrun.patch.
+[A4] Removed disabled /etc/systemd/system/mem_check.service; daemon-reloaded.
+[A5] Deleted ~/radtest-test-artifacts (failed-run data preserved in archive).
+[A6] Deleted junk file ~/1.
+[A7] Channel-5 service logs now append to /var/log/radtest/power/ (edited installed units + repo systemd/ sources, moved old logs, restarted both services — active and writing). Follow-up per feedback: power/ added to pull_logs.sh's channel loop (with nested per-run_id handling for the scp fallback), and power/ ownership fixed to melagen:radlog 2750 — radpull read access verified.
+[S1] Deleted the "udo nmcli … password …" file (contents were just an nmcli scan capture — nothing lost).

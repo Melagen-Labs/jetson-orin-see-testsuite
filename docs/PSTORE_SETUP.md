@@ -8,77 +8,61 @@ autonomously under the beam, the kernel leaves a persistent record under
 script provides the boot_id + uptime timeline; pstore provides the panic/console
 dump the arbiter correlates it against.
 
-> All kernel-config and device-tree changes here happen at **flash time** and
-> cannot live in this repo — they are applied to the L4T image directly. This
-> runbook is the procedure; keep the actual values you used with your image notes.
+> **Status (2026-08-05): verified working on `orin-nano-01`, no flash-time work
+> needed.** Contrary to this runbook's original assumption, NVIDIA's stock L4T
+> image for the Orin Nano already ships everything: a `ramoops_carveout`
+> reserved-memory node in the device tree and the `ramoops` module, which
+> auto-loads at boot. A bench `sysrq-c` panic test left a 70 KB
+> `dmesg-ramoops-0` ("Panic#1") plus `console-ramoops-0` in `/sys/fs/pstore/`
+> after the automatic reboot. The only thing a new board needs is the
+> radpull-access tmpfiles rule, which `scripts/setup-board.sh` now installs.
 
 ---
 
-## 1. Check what the kernel already has
-
-```bash
-zcat /proc/config.gz | grep PSTORE
-# or, if /proc/config.gz is absent:
-grep PSTORE /boot/config-$(uname -r)
-```
-
-You want at least:
+## 1. What the stock L4T kernel provides (verified, JetPack 5.15.185-tegra)
 
 ```
 CONFIG_PSTORE=y
-CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y          # console log persisted continuously
+CONFIG_PSTORE_RAM=m              # ramoops driver as a module (auto-loads)
+CONFIG_PSTORE_DEFAULT_KMSG_BYTES=10240
 ```
 
-and ideally also:
+Device tree (present on the stock image — check with
+`ls /proc/device-tree/reserved-memory/`):
 
 ```
-CONFIG_PSTORE_CONSOLE=y
-CONFIG_PSTORE_FTRACE=y
+ramoops_carveout: compatible "ramoops", status "okay", no-map,
+                  2 MB @ 0x2725f0000, record-size 64 KB, console-size 512 KB
 ```
 
-If they are missing, rebuild the Jetson Linux (L4T) kernel with those options set
-and reflash. (This is one of the "can't live in a repo" items — done at flash
-time on the image.)
+Boot dmesg proof that it registered:
+
+```
+pstore: Registered ramoops as persistent store backend
+ramoops: using 0x200000@0x2725f0000, ecc: 0
+```
+
+If a future image lacks the carveout, add a `reserved-memory` ramoops node to
+the device tree and reflash (the original Option B). Note the old Option A
+(`memmap=...` on the kernel command line) is **x86-only** — the parameter does
+not exist on arm64, so do not use it on a Jetson.
 
 ---
 
-## 2. Reserve the RAM region ramoops needs
+## 2. Per-board setup: let the arbiter's pull user read pstore
 
-Pick the simpler option that sticks for your L4T version.
-
-### Option A — kernel command line (try first)
-
-Edit `/boot/extlinux/extlinux.conf` and append to the `APPEND` line, reserving
-1 MB at a physical address known to be free on your module:
+The record files are world-readable (0444) but the `/sys/fs/pstore` directory
+is 0750 root:root, which blocks `radpull` (and therefore `pull_logs.sh`).
+`scripts/setup-board.sh` installs this tmpfiles rule (applies now and on every
+boot):
 
 ```
-memmap=0x100000$0x50000000 ramoops.mem_address=0x50000000 ramoops.mem_size=0x100000 ramoops.record_size=0x10000
+# /etc/tmpfiles.d/radtest-pstore.conf
+z /sys/fs/pstore 0755 root root -
 ```
 
-Reboot. Confirm the address is actually free on your specific module before
-committing to it.
-
-### Option B — device tree (more robust)
-
-If Option A does not stick, add a `reserved-memory` node with a child `ramoops`
-node to the Jetson's device tree source, rebuild the DTB, and reflash:
-
-```dts
-reserved-memory {
-    #address-cells = <2>;
-    #size-cells = <2>;
-    ranges;
-
-    ramoops@50000000 {
-        compatible = "ramoops";
-        reg = <0x0 0x50000000 0x0 0x100000>;   /* 1 MB */
-        record-size = <0x10000>;
-        console-size = <0x10000>;
-    };
-};
-```
-
-Match `reg`/sizes to a free region on your module.
+Verify: `sudo -u radpull ls /sys/fs/pstore` must succeed.
 
 ---
 
@@ -91,37 +75,48 @@ echo c | sudo tee /proc/sysrq-trigger
 ```
 
 > **Do this on the bench only — never while a real run is in progress.** It hard
-> crashes the machine on purpose. After it reboots, look for records:
+> crashes the machine on purpose. With `panic=1` armed (docs/CRASH_RECOVERY.md)
+> the board reboots itself in ~1 s. After it comes back:
 
 ```bash
-ls -l /sys/fs/pstore/
-cat /sys/fs/pstore/dmesg-ramoops-0
+sudo ls -l /sys/fs/pstore/
+sudo head /sys/fs/pstore/dmesg-ramoops-0    # expect "Panic#1 ..."
 ```
 
-A `dmesg-ramoops-*` (and, if enabled, `console-ramoops-*`) file is your proof
-that a future real panic will be captured.
+Verified on `orin-nano-01` 2026-08-05: back on the network in under ~90 s with
+`dmesg-ramoops-0` (70 KB, Panic#1) and `console-ramoops-0` present.
+
+**Retention caveat (important for beam interpretation):** the carveout is plain
+DRAM. Records survive panics, warm reboots, and watchdog resets — but **not a
+cold power cycle**. An SEL/latchup recovery that cuts power will wipe any
+unpulled record, so pull promptly (the periodic arbiter pull does this).
 
 ---
 
 ## 4. Retrieval during the campaign
 
 `/sys/fs/pstore/*` plus the boot-state JSONL logs are pulled by the arbiter's
-periodic rsync — see [`arbiter/pull_logs.sh`](../arbiter/pull_logs.sh). "After
+periodic rsync — see [`arbiter/pull_logs.sh`](../arbiter/pull_logs.sh) (the
+pstore rsync is best-effort and needs the §2 tmpfiles rule on the DUT). "After
 ethernet reconnects" is satisfied simply by the next scheduled pull succeeding.
 
-Note pstore is usually root-readable only; see the pstore note in
-`pull_logs.sh` for how to let the low-privilege pull user read it (narrow sudoers
-or a udev/tmpfiles perms rule), or pull it in a separate root-authorized step.
+Note: stock systemd ships `systemd-pstore.service`, which on some distros
+harvests pstore into `/var/lib/systemd/pstore/` at boot and empties the
+originals. On this L4T image it did **not** harvest (records stay in
+`/sys/fs/pstore/` — observed after the verification panic), so the pull path
+above is correct. If a future image update starts harvesting, point the pull at
+`/var/lib/systemd/pstore` instead (`PSTORE_DIR` env var of `pull_logs.sh`).
 
 ---
 
 ## 5. Housekeeping
 
-pstore has finite reserved space. Records persist across reboots until removed;
-after you have pulled and archived a record, clear it so the next panic has room:
+pstore has finite reserved space (2 MB). Records persist across reboots until
+removed; after the arbiter has pulled and archived a record, clear it so the
+next panic has room:
 
 ```bash
-sudo rm /sys/fs/pstore/dmesg-ramoops-0
+sudo rm /sys/fs/pstore/dmesg-ramoops-0 /sys/fs/pstore/console-ramoops-0
 ```
 
 Do this only after the arbiter has copied it off.

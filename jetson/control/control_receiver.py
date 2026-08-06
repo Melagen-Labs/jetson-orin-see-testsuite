@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import socket
 import socketserver
@@ -85,8 +86,9 @@ DEFAULTS = {
     "default_baseline_duration_s": 3600,  # BASELINE_TEST default (1 h, the reference run)
     "max_duration_s": 86400,           # sanity cap (24 h) on an operator-supplied duration
     "beam_energies_mev": [50, 63, 125, 200],
-    "shielding_materials": ["Aluminium", "MLC1", "MLC2"],
-    "shielding_thicknesses_mm": [8, 12, 16],
+    "shielding_modes": ["preset", "custom"],
+    "shielding_materials": ["Bare", "Aluminium", "MLC1", "MLC2"],
+    "shielding_thicknesses_mm": [0, 8, 12, 16],
 
     "control_log": "./logs/test_control.jsonl",
 
@@ -170,29 +172,53 @@ def hostname():
 
 # --- validation -------------------------------------------------------------
 
+def _validated_numeric(value, field_name, *, allow_zero=False):
+    """Return (numeric, error) for finite numeric request fields."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, "%s must be numeric" % field_name
+
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return None, "%s must be finite" % field_name
+
+    if allow_zero:
+        if numeric < 0:
+            return None, "%s must not be negative" % field_name
+    elif numeric <= 0:
+        return None, "%s must be greater than 0" % field_name
+
+    return numeric, None
+
+
 def validate(msg, cfg):
-    """Return (command, errors). `errors` empty == valid. `command` may be None."""
+    """Return (command, errors). `errors` empty == valid."""
+
     errors = []
     if not isinstance(msg, dict):
         return None, ["payload is not a JSON object"]
 
     cmd = msg.get("command")
     if cmd not in cfg["supported_commands"]:
-        errors.append("unsupported command %r (expected one of %s)"
-                      % (cmd, cfg["supported_commands"]))
-        # can't validate fields without a known command
+        errors.append(
+            "unsupported command %r (expected one of %s)"
+            % (cmd, cfg["supported_commands"])
+        )
         return cmd, errors
 
     required = {
         "START_TEST": REQUIRED_START_FIELDS,
         "BASELINE_TEST": REQUIRED_BASELINE_FIELDS,
     }.get(cmd, REQUIRED_STOP_FIELDS)
-    for f in required:
-        if f not in msg:
-            errors.append("missing required field %r" % f)
+    for field_name in required:
+        if field_name not in msg:
+            errors.append("missing required field %r" % field_name)
 
     if msg.get("protocol_version") != cfg["protocol_version"]:
-        errors.append("protocol_version must be %s" % cfg["protocol_version"])
+        errors.append(
+            "protocol_version must be %s"
+            % cfg["protocol_version"]
+        )
 
     # duration_s is optional on both run commands (each has its own default) but
     # must be a positive number within the sanity cap when present. bool is an int
@@ -206,11 +232,126 @@ def validate(msg, cfg):
 
     if cmd == "START_TEST":
         if msg.get("beam_energy_mev") not in cfg["beam_energies_mev"]:
-            errors.append("beam_energy_mev must be one of %s" % cfg["beam_energies_mev"])
-        if msg.get("shielding_material") not in cfg["shielding_materials"]:
-            errors.append("shielding_material must be one of %s" % cfg["shielding_materials"])
-        if msg.get("shielding_thickness_mm") not in cfg["shielding_thicknesses_mm"]:
-            errors.append("shielding_thickness_mm must be one of %s" % cfg["shielding_thicknesses_mm"])
+            errors.append(
+                "beam_energy_mev must be one of %s"
+                % cfg["beam_energies_mev"]
+            )
+
+        allowed_modes = cfg.get(
+            "shielding_modes",
+            ["preset", "custom"],
+        )
+        mode = msg.get("shielding_mode", "preset")
+
+        if mode not in allowed_modes:
+            errors.append(
+                "shielding_mode must be one of %s"
+                % allowed_modes
+            )
+        elif mode == "preset":
+            material = msg.get("shielding_material")
+            thickness = msg.get("shielding_thickness_mm")
+
+            if material not in cfg["shielding_materials"]:
+                errors.append(
+                    "shielding_material must be one of %s"
+                    % cfg["shielding_materials"]
+                )
+
+            if thickness not in cfg["shielding_thicknesses_mm"]:
+                errors.append(
+                    "shielding_thickness_mm must be one of %s"
+                    % cfg["shielding_thicknesses_mm"]
+                )
+
+            if material == "Bare" and thickness != 0:
+                errors.append("Bare shielding must use reference 0")
+
+            if material != "Bare" and thickness == 0:
+                errors.append(
+                    "only Bare shielding may use reference 0"
+                )
+
+            reference = msg.get("shielding_reference_mm")
+            if reference is not None and reference != thickness:
+                errors.append(
+                    "preset shielding_reference_mm must match "
+                    "shielding_thickness_mm"
+                )
+
+            actual = msg.get("shielding_actual_thickness_mm")
+            if actual is not None:
+                _, error = _validated_numeric(
+                    actual,
+                    "shielding_actual_thickness_mm",
+                    allow_zero=material == "Bare",
+                )
+                if error:
+                    errors.append(error)
+        else:
+            material = msg.get("shielding_material")
+            if not isinstance(material, str):
+                errors.append(
+                    "custom shielding_material must be a string"
+                )
+            elif not material.strip():
+                errors.append(
+                    "custom shielding_material must not be blank"
+                )
+
+            thickness = msg.get("shielding_thickness_mm")
+            actual = msg.get(
+                "shielding_actual_thickness_mm",
+                thickness,
+            )
+            thickness_numeric, thickness_error = _validated_numeric(
+                thickness,
+                "shielding_thickness_mm",
+                allow_zero=False,
+            )
+            if thickness_error:
+                errors.append(thickness_error)
+
+            actual_numeric, actual_error = _validated_numeric(
+                actual,
+                "shielding_actual_thickness_mm",
+                allow_zero=False,
+            )
+            if actual_error:
+                errors.append(actual_error)
+
+            if (
+                thickness_numeric is not None
+                and actual_numeric is not None
+                and not math.isclose(
+                    thickness_numeric,
+                    actual_numeric,
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+            ):
+                errors.append(
+                    "custom thickness fields do not match"
+                )
+
+        configuration_id = msg.get("shielding_configuration_id")
+        if (
+            configuration_id is not None
+            and not isinstance(configuration_id, str)
+        ):
+            errors.append(
+                "shielding_configuration_id must be a string"
+            )
+
+        if (
+            "campaign_metadata" in msg
+            and not isinstance(msg["campaign_metadata"], dict)
+        ):
+            errors.append(
+                "campaign_metadata must be a JSON object"
+            )
+
+        # (duration_s is validated above, for START_TEST and BASELINE_TEST alike.)
 
     return cmd, errors
 
@@ -259,39 +400,95 @@ def run_metadata(msg, baseline=False):
 
     A baseline runs with the beam OFF, so its records say so explicitly ("none")
     rather than inheriting whatever energy/shield the last beam run left behind --
-    that is what keeps baseline rows from ever being mistaken for beam data.
+    that is what keeps baseline rows from ever being mistaken for beam data. Every
+    shielding key a beam run writes is overwritten too, so nothing stale survives
+    in the channel configs from the previous run.
     """
     if baseline:
-        return {"run_id": msg["request_id"], "beam_energy": "none",
-                "shield_config": "none"}
+        return {
+            "run_id": msg["request_id"],
+            "beam_energy": "none",
+            "shield_config": "none",
+            "shielding_mode": "none",
+            "shielding_material": "none",
+            "shielding_reference_mm": None,
+            "shielding_actual_thickness_mm": None,
+            "shielding_configuration_id": "",
+        }
+
+    mode = msg.get("shielding_mode", "preset")
+    material = msg["shielding_material"]
+    transmitted_thickness = msg["shielding_thickness_mm"]
+    actual_thickness = msg.get(
+        "shielding_actual_thickness_mm",
+        transmitted_thickness,
+    )
+    reference_mm = msg.get("shielding_reference_mm")
+    configuration_id = msg.get(
+        "shielding_configuration_id",
+        "",
+    )
+
+    if mode == "preset":
+        shield_config = "%s_%smm" % (
+            material,
+            transmitted_thickness,
+        )
+    else:
+        shield_config = "%s_%smm" % (
+            material,
+            actual_thickness,
+        )
+
     return {
         "run_id": msg["request_id"],
         "beam_energy": "%sMeV" % msg["beam_energy_mev"],
-        "shield_config": "%s_%smm" % (msg["shielding_material"], msg["shielding_thickness_mm"]),
-        # fluence_source is not in the arbiter contract -> left as each config has it.
+        "shield_config": shield_config,
+        "shielding_mode": mode,
+        "shielding_material": material,
+        "shielding_reference_mm": reference_mm,
+        "shielding_actual_thickness_mm": actual_thickness,
+        "shielding_configuration_id": configuration_id,
     }
 
 
+
 def do_start(msg, cfg, baseline=False):
-    """Apply metadata, arm, and (re)start every channel. Returns per-channel results.
+    """Apply metadata, arm, and (re)start every channel.
 
     Identical for a beam run and a baseline run -- that is the point: a baseline
     must exercise the same stack (cuda_particles + mem_check_gpu) that beam day
     will, or its current envelope describes a machine we never actually test.
     """
-    meta = run_metadata(msg, baseline=baseline)
+    channel_meta = run_metadata(msg, baseline=baseline)
+
+    applied = dict(channel_meta)
+    if isinstance(msg.get("campaign_metadata"), dict):
+        applied["campaign_metadata"] = dict(
+            msg["campaign_metadata"]
+        )
+
     results = []
-    for ch in cfg["channels"]:
-        r = {"name": ch["name"], "service": ch["service"]}
+    for channel in cfg["channels"]:
+        result = {
+            "name": channel["name"],
+            "service": channel["service"],
+        }
         try:
-            apply_metadata(ch, meta)
-            open(ch["armed_flag"], "a").close()      # touch ARMED (create if absent)
-            ok, detail = systemctl("restart", ch["service"], cfg)
-            r["ok"], r["detail"] = ok, detail
-        except Exception as exc:                      # noqa: BLE001
-            r["ok"], r["detail"] = False, "arm/config error: %s" % exc
-        results.append(r)
-    return meta, results
+            apply_metadata(channel, channel_meta)
+            open(channel["armed_flag"], "a").close()
+            ok, detail = systemctl(
+                "restart",
+                channel["service"],
+                cfg,
+            )
+            result["ok"], result["detail"] = ok, detail
+        except Exception as exc:
+            result["ok"] = False
+            result["detail"] = "arm/config error: %s" % exc
+        results.append(result)
+
+    return applied, results
 
 
 def do_stop(cfg):

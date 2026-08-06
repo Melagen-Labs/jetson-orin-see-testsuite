@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # pull_logs.sh -- arbiter-side log puller (build plan section 0 step 3, section 4 step 6)
 #
-# Rsyncs the DUT's memory/, compute/, boot_state/, and power/ log directories plus
-# /sys/fs/pstore/* to the arbiter's local log tree over SSH key auth. Safe to run
+# Rsyncs the DUT's memory/, compute/, boot_state/, and power/ log directories
+# plus /sys/fs/pstore/* to the arbiter's local log tree over SSH key auth. Safe to run
 # unattended and repeatedly -- from arbiter_main.py on a timer, or from cron, or
 # by hand after the DUT's ethernet reconnects. It never blocks: if the DUT is
 # down/rebooting, the failing rsync is logged and the script still exits 0 so the
@@ -109,6 +109,16 @@ pull_channel() {   # $1 = sub-dir (memory|compute|boot_state|power)
                 "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
                 || echo "pull_logs: scp of ${sub} ${pattern} failed (none yet, or DUT down)" >&2
         done
+        # power/ holds BOTH layouts: BASELINE_TEST writes its CSV + summary flat
+        # (the globs above), while the spike collector nests per-run_id dirs (all
+        # small -- samples, spike events, summaries; no heavy dumps), which a flat
+        # glob misses. Recursively copy the run dirs as well, so neither is lost.
+        if [ "${sub}" = "power" ]; then
+            scp -q -r ${SSH_OPTS} \
+                "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/power/*/" \
+                "${LOCAL_LOG_DIR}/power/" 2>/dev/null \
+                || echo "pull_logs: scp of power run dirs failed (none yet, or DUT down)" >&2
+        fi
     fi
 }
 

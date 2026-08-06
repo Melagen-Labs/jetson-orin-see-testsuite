@@ -10,7 +10,8 @@ reboot, or latchup. This process:
     and awaits retarget to the DUT current collector's pulled records, so this
     thread stays inert unless ``--power-serial-port`` is given,
   * on a timer, shells out to ``pull_logs.sh`` to rsync the DUT's ``memory/``,
-    ``compute/``, and ``boot_state/`` logs (plus pstore) to the arbiter,
+    ``compute/``, ``boot_state/``, and ``power/`` logs (plus pstore) to the
+    arbiter,
   * appends every event -- heartbeat loss/resume, power status changes, and
     log-pull summaries -- into one timestamped JSONL correlator file keyed by
     the arbiter's wall clock, so post-test you can line up "heartbeat lost at T"
