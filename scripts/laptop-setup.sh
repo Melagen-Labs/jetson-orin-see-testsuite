@@ -53,7 +53,12 @@ echo "[2/5] install packages (openssh-server, nfs-kernel-server, lbzip2, curl)"
 sudo add-apt-repository -y universe >/dev/null 2>&1 || true
 sudo apt-get update -qq
 sudo apt-get install -y openssh-server nfs-kernel-server lbzip2 curl \
-    sshpass abootimg libxml2-utils zstd binutils
+    sshpass abootimg libxml2-utils zstd binutils xmlstarlet \
+    cryptsetup efibootmgr git-core lz4 liblz4-tool nvme-cli pciutils \
+    python3-pip qemu-user-static usbutils x11-xserver-utils attr sysstat pesign
+# ^ the full dependency set greppable from the L4T R36.5 flash scripts
+#   ("apt-get install" hints + "not found" checks), minus docker (unused).
+#   Installed en masse so no flash ever dies mid-run on a missing host tool.
 sudo systemctl enable --now ssh nfs-kernel-server
 
 # 3. Tailscale (remote access for the team) ------------------------------------
