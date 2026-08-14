@@ -46,11 +46,11 @@ steppy, SD understates the tail) -- so the pending proposal is baseline max
 full workload stack by design, so baselines DO include sim load.
 FLEET SWEEP (repo pull + ch5 pull from GitHub + watchdog fix + service restarts
 + install the Windows arbiter's radpull key -- without it the log mirror
-silently fails; found on 04 mid-test): code sweep DONE 01, 04, 05, 06, 07;
-radpull key DONE 01, 04, 06, 07. OWED: key on 05 (Shiven handling); full sweep
-on 02, 03, 08. Board 06's sshd fault (accept-then-close pre-banner) was fixed
-at the bench over serial 2026-08-14 ~23:20Z (host keys regenerated -- new
-fingerprint pinned); swept fully afterward.
+silently fails; found on 04 mid-test): code sweep DONE 01, 04, 05, 06, 07, 08;
+radpull key DONE 01, 04, 06, 07, 08. OWED: key on 05 (Shiven handling); full
+sweep on 02 and 03 only. Board 06's sshd fault (accept-then-close pre-banner)
+was fixed at the bench over serial 2026-08-14 ~23:20Z (host keys regenerated --
+new fingerprint pinned); swept fully afterward.
 Per-board 1-h baselines -> per-board absolute limits still owed for ALL of 02-08
 (they carry the stale 1987.03, now reboot-guard-only so it is not urgent).
 
