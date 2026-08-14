@@ -9,8 +9,9 @@ Brings the whole arbiter console up with a single command:
 It starts, in order:
   1. the heartbeat listener (this repo's arbiter/heartbeat_listener.py) in its own
      console window, so you can watch `seq` climb,
-  2. a live log-pull loop in a background thread (scp -> <coordinator>/arbiter_logs,
-     feeds the GUI's live SEE panel; scp ships with Windows OpenSSH -- no rsync),
+  2. a live log-pull loop in a background thread (tar-over-ssh mirror of
+     /var/log/radtest -> <coordinator>/arbiter_logs, feeds the GUI's live SEE
+     panel; ssh + tar ship with Windows -- no rsync),
   3. the coordinator GUI (app_local_tcp.py) in the foreground.
 
 Everything lives in this one repo: the GUI was imported to `arbiter/coordinator/`
@@ -35,32 +36,27 @@ DEFAULT_COORD = os.path.join(HERE, "coordinator")          # the GUI, in-repo si
 DUT_LOG_DIR = "/var/log/radtest"
 
 
-# Per-channel file patterns to pull. power/ carries the baseline current CSV and
-# its summary sidecar as well as the JSONL -- that CSV is the deliverable of a
-# BASELINE_TEST, and the GUI copies it out of here into results/.
-PULL_PATTERNS = {
-    "compute": ("*.jsonl",),
-    "memory": ("*.jsonl",),
-    "boot_state": ("*.jsonl",),
-    "power": ("*.jsonl", "*.csv", "*.summary.json"),
-}
-
-
 def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
-    """Every 3 s, scp the DUT's event logs (and baseline CSVs) into <logs>/<channel>/."""
+    """Every 3 s, mirror the DUT's whole /var/log/radtest tree into <logs> via
+    tar-over-ssh. One connection brings the per-run folders (compute/memory/power
+    all nest <channel>/<run_id>/ now) across with their structure intact --
+    per-file scp globs can't do that. Only the ~10 MB-each see_dumps are
+    excluded; they arrive in the end-of-run PULL_MODE=full pull. Total moved per
+    tick is KBs, so the 3 s cadence costs the DUT nothing."""
     ssh_opts = ["-i", ssh_key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
                 "-o", "StrictHostKeyChecking=accept-new"]
+    remote_tar = f"tar -C {DUT_LOG_DIR} -cz --exclude=see_dumps ."
     while not stop.is_set():
-        for sub, patterns in PULL_PATTERNS.items():
-            dest = os.path.join(logs, sub)
-            os.makedirs(dest, exist_ok=True)
-            for pattern in patterns:
-                # The glob is expanded on the DUT by its shell (scp passes it through).
-                subprocess.run(
-                    ["scp", "-q", *ssh_opts,
-                     f"{dut_user}@{dut_host}:{DUT_LOG_DIR}/{sub}/{pattern}", dest + os.sep],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+        try:
+            src = subprocess.Popen(
+                ["ssh", *ssh_opts, f"{dut_user}@{dut_host}", remote_tar],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(["tar", "-xz", "-C", logs], stdin=src.stdout,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            src.wait()
+        except OSError:
+            pass  # ssh/tar missing or DUT down -- try again next tick
         stop.wait(3)
 
 
@@ -71,8 +67,9 @@ def main():
     ap.add_argument("--coordinator-dir", default=DEFAULT_COORD,
                     help="Path to the coordinator GUI (default: arbiter/coordinator, in-repo).")
     ap.add_argument("--dut-user", default="radpull", help="Low-priv log-pull user.")
-    ap.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_ed25519"),
-                    help="SSH private key authorized for radpull on the DUT.")
+    ap.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/radtest_pull"),
+                    help="SSH private key authorized for radpull on the DUT "
+                         "(same default as pull_logs.sh).")
     args = ap.parse_args()
     py = sys.executable
 

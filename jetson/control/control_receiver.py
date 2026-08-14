@@ -400,6 +400,24 @@ def apply_metadata(channel, meta):
     os.replace(tmp, path)                # atomic swap so a service never reads a half-written file
 
 
+def prepare_run_log_dir(channel, run_id):
+    """Create this run's log directory (/var/log/radtest/<channel>/<run_id>/) and
+    return its path. Each run gets its own folder -- the workloads' log_dir is
+    re-pointed here via apply_metadata, so nothing accumulates in a shared file.
+    Mirrors the channel dir's owner/group/mode (receiver runs as root; the
+    services write as melagen and radpull reads via the radlog group)."""
+    parent = os.path.dirname(channel["log"])
+    path = os.path.join(parent, run_id)
+    os.makedirs(path, exist_ok=True)
+    try:
+        st = os.stat(parent)
+        os.chown(path, st.st_uid, st.st_gid)
+        os.chmod(path, st.st_mode & 0o7777)
+    except OSError as exc:               # noqa: BLE001
+        sys.stderr.write("[test_control] could not set %s ownership: %s\n" % (path, exc))
+    return path
+
+
 def systemctl(action, service, cfg):
     """Run `systemctl <action> <service>`; return (ok, detail)."""
     try:
@@ -497,7 +515,12 @@ def do_start(msg, cfg, baseline=False):
             "service": channel["service"],
         }
         try:
-            apply_metadata(channel, channel_meta)
+            # Per-run log folder: the channel config's log_dir is re-pointed at
+            # <channel>/<run_id>/ for this run, so every run's records (and any
+            # see_dumps) live in their own directory instead of a rolling file.
+            meta = dict(channel_meta)
+            meta["log_dir"] = prepare_run_log_dir(channel, channel_meta["run_id"])
+            apply_metadata(channel, meta)
             open(channel["armed_flag"], "a").close()
             ok, detail = systemctl(
                 "restart",
@@ -761,8 +784,15 @@ def summarize_run(cfg, run_id):
     matched = 0
 
     for ch in cfg.get("channels", []):
-        path = ch.get("log")
-        if not path or not os.path.exists(path):
+        base = ch.get("log")
+        if not base:
+            continue
+        # Per-run layout first (<channel>/<run_id>/<log name>); fall back to the
+        # legacy flat file for runs recorded before the layout change.
+        path = os.path.join(os.path.dirname(base), run_id, os.path.basename(base))
+        if not os.path.exists(path):
+            path = base
+        if not os.path.exists(path):
             continue
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as fp:

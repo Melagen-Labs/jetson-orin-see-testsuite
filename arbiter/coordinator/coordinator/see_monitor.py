@@ -116,26 +116,30 @@ class SeeLogTailer:
             self._prime()
             return []
         events: list[dict[str, Any]] = []
+        for path in self._log_files():
+            events.extend(self._read_new(path))
+        return events
+
+    def _log_files(self) -> list[Path]:
+        """Every channel JSONL under the root: flat legacy files plus the
+        per-run folders (<channel>/<run_id>/*.jsonl) the DUT writes now."""
+        files: list[Path] = []
         for sub in SEE_LOG_SUBDIRS:
             directory = self.root / sub
             if not directory.is_dir():
                 continue
-            for path in sorted(directory.glob("*.jsonl")):
-                events.extend(self._read_new(path))
-        return events
+            files.extend(sorted(directory.glob("*.jsonl")))
+            files.extend(sorted(directory.glob("*/*.jsonl")))
+        return files
 
     def _prime(self) -> None:
         """Fast-forward every existing log to its current end, so only events
         appended after the monitor started are reported."""
-        for sub in SEE_LOG_SUBDIRS:
-            directory = self.root / sub
-            if not directory.is_dir():
+        for path in self._log_files():
+            try:
+                self._offsets[str(path)] = path.stat().st_size
+            except OSError:
                 continue
-            for path in sorted(directory.glob("*.jsonl")):
-                try:
-                    self._offsets[str(path)] = path.stat().st_size
-                except OSError:
-                    continue
         self._primed = True
 
     def _read_new(self, path: Path) -> list[dict[str, Any]]:

@@ -107,6 +107,10 @@ class TestCoordinatorApp(ttk.Frame):
             else DEFAULT_SEE_LOG_ROOT
         )
         self._see_tailer = SeeLogTailer(self._see_log_root)
+        # Durable arbiter-side SEE record: every classified event the live panel
+        # shows is also appended here, so the tally survives GUI restarts and can
+        # be diffed against the DUT's own channel logs after the campaign.
+        self._see_events_path = self._see_log_root / "see_events.jsonl"
         self._see_after_id: str | None = None
 
         # End-of-run full log pull. The periodic arbiter pull runs PULL_MODE=live
@@ -2001,6 +2005,19 @@ class TestCoordinatorApp(ttk.Frame):
         self.see_log.see("end")
         self.see_log.configure(state="disabled")
 
+    def _persist_see(self, event: dict[str, Any]) -> None:
+        """Append one classified SEE to arbiter_logs/see_events.jsonl. Unlike the
+        panel (cleared on every START), this file accumulates across runs; the
+        DUT's ts plus arbiter_ts records both clocks. Best-effort -- a disk error
+        must not take down the poll loop."""
+        try:
+            record = dict(event)
+            record["arbiter_ts"] = datetime.now().isoformat(timespec="seconds")
+            with open(self._see_events_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record) + "\n")
+        except OSError:
+            pass
+
     def _clear_see_panel(self) -> None:
         """Empty the live SEE panel. Called on a new START so the panel shows only
         the current run's events -- the tailer already tracks new events by byte
@@ -2016,6 +2033,7 @@ class TestCoordinatorApp(ttk.Frame):
 
         try:
             for event in self._see_tailer.poll():
+                self._persist_see(event)
                 label = SEE_TYPE_LABELS.get(
                     event["type_key"],
                     event["type_key"],

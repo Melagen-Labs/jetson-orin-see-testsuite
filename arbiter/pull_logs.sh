@@ -109,15 +109,17 @@ pull_channel() {   # $1 = sub-dir (memory|compute|boot_state|power)
                 "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
                 || echo "pull_logs: scp of ${sub} ${pattern} failed (none yet, or DUT down)" >&2
         done
-        # power/ holds BOTH layouts: BASELINE_TEST writes its CSV + summary flat
-        # (the globs above), while the spike collector nests per-run_id dirs (all
-        # small -- samples, spike events, summaries; no heavy dumps), which a flat
-        # glob misses. Recursively copy the run dirs as well, so neither is lost.
-        if [ "${sub}" = "power" ]; then
+        # Channels nest per-run_id dirs now (<channel>/<run_id>/...), which the
+        # flat globs above miss; power/ additionally keeps baseline CSVs flat.
+        # Recursively copy the run dirs for the small channels. compute/ is NOT
+        # recursed here: its run dirs contain the ~10 MB-each see_dumps and scp
+        # has no --exclude -- rsync (canonical) handles it, and the scp full
+        # pull above brings compute run dirs anyway when the run is over.
+        if [ "${sub}" = "power" ] || [ "${sub}" = "memory" ]; then
             scp -q -r ${SSH_OPTS} \
-                "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/power/*/" \
-                "${LOCAL_LOG_DIR}/power/" 2>/dev/null \
-                || echo "pull_logs: scp of power run dirs failed (none yet, or DUT down)" >&2
+                "${DUT_USER}@${DUT_HOST}:${DUT_LOG_DIR}/${sub}/*/" \
+                "${LOCAL_LOG_DIR}/${sub}/" 2>/dev/null \
+                || echo "pull_logs: scp of ${sub} run dirs failed (none yet, or DUT down)" >&2
         fi
     fi
 }

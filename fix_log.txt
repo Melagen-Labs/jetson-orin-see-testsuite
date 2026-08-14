@@ -32,6 +32,18 @@ aligned with upstream (durable JSONL logging). STILL OPEN BEFORE FREEZE:
 V2 watchdog decision (board 02 carries inherited 2min — decide + re-capture or
 patch per-board), A2 channel-5 GitHub push, V3/V4 doc truth-ups, V5 run_id policy.
 
+[V8] CURRENT-THRESHOLD POLICY (decided by Shiven 2026-08-14): channel-5 absolute
+limit = per-board baseline mean + 4 SD; the relative rule (sample > 10s rolling
+average + 100 mA) stays as-is. Replaces the deployed mean+2SD value (1987.03 mA,
+derived from nano-01's 12-min Aug-1 baseline), which sat BELOW that baseline's
+own max (2040) and false-flagged 3.6% of normal samples. No lower/undercurrent
+limit exists by design (dead-board = heartbeat's job). Rollout: 1-h BASELINE_TEST
+per board (01 started 2026-08-14 19:32Z; auto-dispatcher arms the rest as they
+power on) -> compute mean+4SD from each CSV on-board -> write each board's
+/etc/radtest/current_monitor.json -> restart monitor. Analyzer invocations use
+--sigma-multiplier 4 (code default 2 left for the ch5 owners to change; A2 push
+still pending).
+
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
 [V7-RESOLVED 2026-08-06 ~03:45] Board 02 FLASHED AND VALIDATED: l4t_initrd_flash path (fresh 256GB GPT + QSPI + master rootfs) succeeded after fixing two baked-in config bugs found via initrd-shell diagnosis: (1) extlinux had the master's stale root=PARTUUID prepended to the tool's appended correct one (removed; staging fixed so future flashes bake clean), (2) fstab demanded the master's old ESP UUID -> 90s timeout -> emergency mode = the "silent board" (fixed on-disk + nofail; staging too). First boot: SSD root confirmed, systemd "running", all 5 services active, Tailscale identity reset per manual §3. Remaining fleet steps: update board 02 (repo main + channel 5 + V2 watchdog decision), setup-board.sh 02, Tailscale enroll, §4 validation, then BACK UP board 02 as the 256GB fleet image for boards 03-07. Flash package is complete so --flash-only reruns are available. Original V7 text follows.
