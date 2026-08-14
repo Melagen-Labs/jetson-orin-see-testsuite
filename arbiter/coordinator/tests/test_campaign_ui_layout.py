@@ -67,9 +67,17 @@ class TestCampaignUiLayout(CampaignLayoutTestCase):
         beam_frame = find_labelframe(self.app, "Beam Parameters")
         energy_box = self.app._selection_widgets[0]
 
-        info = energy_box.grid_info()
+        # The energy dropdown ships wrapped with its custom-value entry, so the
+        # wrapper is what gets placed in the beam row; assert on whichever of
+        # the two actually carries the grid placement.
+        placed = energy_box if energy_box.grid_info().get("in") else energy_box.master
+        if energy_box.master is not self.app:
+            placed = energy_box.master
+        info = placed.grid_info()
         self.assertEqual(str(info["in"]), str(beam_frame))
         self.assertEqual(int(info["row"]), 0)
+        # The dropdown itself must still be reachable inside that placement.
+        self.assertIn(str(placed), str(energy_box))
 
     def test_shielding_configuration_frame_holds_material_and_thickness(self) -> None:
         shield_frame = find_labelframe(self.app, "Shielding Configuration")

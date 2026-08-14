@@ -102,9 +102,15 @@ def apply_campaign_ui_layout(app: Any) -> None:
         row=0, column=2, sticky="w", padx=(24, 8), pady=4
     )
     energy_box.configure(width=12)
-    energy_box.grid(in_=beam_frame, row=0, column=3, sticky="w", pady=4)
+    # This repo's UI wraps the energy dropdown together with its custom-value
+    # entry in a frame (the "Custom..." beam energy option). Move that wrapper,
+    # not the bare dropdown: tkinter refuses to re-grid a widget into a frame
+    # outside its own parent, and the custom field has to travel with the
+    # dropdown anyway. Falls back to the dropdown itself when it is unwrapped.
+    energy_widget = energy_box.master if energy_box.master is not app else energy_box
+    energy_widget.grid(in_=beam_frame, row=0, column=3, sticky="w", pady=4)
     # Created before the frame, so raise it above the frame surface.
-    energy_box.lift()
+    energy_widget.lift()
     # Keep flux and energy adjacent on the left; a trailing spacer absorbs width.
     beam_frame.columnconfigure(1, weight=0)
     beam_frame.columnconfigure(4, weight=1)
