@@ -29,6 +29,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # <base>/jetson-orin-see-testsuite/arbiter
 DUT_REPO = os.path.dirname(HERE)                            # jetson-orin-see-testsuite
@@ -115,6 +116,23 @@ def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
                 dest = os.path.join(logs, board)
         except (OSError, ValueError):
             pass
+        # Identity cross-check: ask the cabled board who it is (its hostname,
+        # set per-board at flash time) over the same radpull channel. The GUI
+        # compares this against the operator's DUT selection at Start, so a
+        # board cabled under the wrong dropdown entry gets caught. No DUT-side
+        # code involved -- hostname is already there.
+        try:
+            probe = subprocess.run(
+                ["ssh", *ssh_opts, f"{dut_user}@{dut_host}", "hostname"],
+                capture_output=True, text=True, timeout=6,
+            )
+            name = probe.stdout.strip()
+            if probe.returncode == 0 and name:
+                with open(os.path.join(logs, "cabled_board.json"), "w",
+                          encoding="utf-8") as handle:
+                    json.dump({"name": name, "checked_at": time.time()}, handle)
+        except (OSError, subprocess.TimeoutExpired):
+            pass  # unknown identity just means the GUI skips the cross-check
         try:
             os.makedirs(dest, exist_ok=True)
             src = subprocess.Popen(

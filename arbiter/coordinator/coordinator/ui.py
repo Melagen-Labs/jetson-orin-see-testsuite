@@ -1339,6 +1339,10 @@ class TestCoordinatorApp(ttk.Frame):
             )
             return
 
+        if not self._confirm_dut_identity():
+            self._append_log("START_TEST cancelled: DUT identity mismatch.")
+            return
+
         try:
             beam_energy, energy_mode = self._resolve_beam_energy()
             duration_s = int(self.duration_var.get().strip())
@@ -2097,6 +2101,44 @@ class TestCoordinatorApp(ttk.Frame):
         self._see_tailer = SeeLogTailer(self._see_log_root)
         self._see_events_dir = self._see_log_root / "see_events"
         self._append_log(f"DUT selected: {name} -> logs in {self._see_log_root}")
+
+    def _cabled_board_name(self) -> str | None:
+        """The identity the pull loop last observed on the cable (the board's
+        own hostname over the radpull channel), or None if unknown/stale."""
+        try:
+            payload = json.loads(
+                (self._see_log_base / "cabled_board.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            if time.time() - float(payload.get("checked_at", 0)) > 120:
+                return None
+            name = str(payload.get("name", "")).strip()
+            return name or None
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _confirm_dut_identity(self) -> bool:
+        """Secondary identity check before a run starts: the dropdown says who
+        the operator THINKS is cabled; the board's own reported hostname says
+        who actually is. On mismatch the operator must explicitly override
+        (logs would otherwise be filed under the wrong board)."""
+        selected = getattr(self, "dut_type_var", None)
+        selected = selected.get() if selected is not None else ""
+        cabled = self._cabled_board_name()
+        if not cabled or not selected.startswith("orin-nano") or cabled == selected:
+            return True
+        self._append_log(
+            f"DUT identity mismatch: selector says {selected}, "
+            f"cabled board reports {cabled}."
+        )
+        return messagebox.askyesno(
+            "DUT Identity Mismatch",
+            f"The DUT selector says {selected}, but the board on the cable "
+            f"reports it is {cabled}.\n\nLogs will be filed under {selected}. "
+            "Start anyway?",
+            parent=self.master,
+        )
 
     def _see_events_file(self, run_id: str | None) -> Path:
         """Per-run SEE file under arbiter_logs/see_events/. Events whose record
