@@ -44,8 +44,11 @@ mean+4SD on the valid Aug-6 data = 1562, BELOW its own max (distribution is
 steppy, SD understates the tail) -- so the pending proposal is baseline max
 + 100 mA (~1750 for 01), decision not yet made. NOTE: BASELINE_TEST runs the
 full workload stack by design, so baselines DO include sim load.
-FLEET SWEEP (repo pull + ch5 pull from GitHub + watchdog fix + service restarts):
-DONE 01, 04, 05 (2026-08-14 ~22:30Z). OWED when next powered: 02, 03, 06, 07, 08.
+FLEET SWEEP (repo pull + ch5 pull from GitHub + watchdog fix + service restarts
++ install the Windows arbiter's radpull key -- without it the log mirror
+silently fails; found on 04 mid-test): code sweep DONE 01, 04, 05; radpull key
+DONE 01, 04 (05 dropped offline before install). OWED: key on 05; full sweep
+on 02, 03, 06, 07, 08.
 Per-board 1-h baselines -> per-board absolute limits still owed for ALL of 02-08
 (they carry the stale 1987.03, now reboot-guard-only so it is not urgent).
 
