@@ -44,9 +44,10 @@ mean+4SD on the valid Aug-6 data = 1562, BELOW its own max (distribution is
 steppy, SD understates the tail) -- so the pending proposal is baseline max
 + 100 mA (~1750 for 01), decision not yet made. NOTE: BASELINE_TEST runs the
 full workload stack by design, so baselines DO include sim load.
-FLEET SWEEP OWED (boards 02-08 when next powered): repo git pull + restart
-test_control.service (per-run log folders, a88677d) + apply the ch5 detector
-change + per-board baseline -> per-board absolute limit.
+FLEET SWEEP (repo pull + ch5 pull from GitHub + watchdog fix + service restarts):
+DONE 01, 04, 05 (2026-08-14 ~22:30Z). OWED when next powered: 02, 03, 06, 07, 08.
+Per-board 1-h baselines -> per-board absolute limits still owed for ALL of 02-08
+(they carry the stale 1987.03, now reboot-guard-only so it is not urgent).
 
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
