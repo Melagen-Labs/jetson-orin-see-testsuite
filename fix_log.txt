@@ -32,17 +32,21 @@ aligned with upstream (durable JSONL logging). STILL OPEN BEFORE FREEZE:
 V2 watchdog decision (board 02 carries inherited 2min — decide + re-capture or
 patch per-board), A2 channel-5 GitHub push, V3/V4 doc truth-ups, V5 run_id policy.
 
-[V8] CURRENT-THRESHOLD POLICY (decided by Shiven 2026-08-14): channel-5 absolute
-limit = per-board baseline mean + 4 SD; the relative rule (sample > 10s rolling
-average + 100 mA) stays as-is. Replaces the deployed mean+2SD value (1987.03 mA,
-derived from nano-01's 12-min Aug-1 baseline), which sat BELOW that baseline's
-own max (2040) and false-flagged 3.6% of normal samples. No lower/undercurrent
-limit exists by design (dead-board = heartbeat's job). Rollout: 1-h BASELINE_TEST
-per board (01 started 2026-08-14 19:32Z; auto-dispatcher arms the rest as they
-power on) -> compute mean+4SD from each CSV on-board -> write each board's
-/etc/radtest/current_monitor.json -> restart monitor. Analyzer invocations use
---sigma-multiplier 4 (code default 2 left for the ch5 owners to change; A2 push
-still pending).
+[V8] CURRENT-THRESHOLD POLICY (Shiven, updated 2026-08-14 evening):
+ROLE SPLIT (deployed on 01, ch5 commit bd4afdd): SEE indicator = the relative
+rule ONLY (sample > 10s rolling average + 100 mA); the absolute limit no longer
+opens spike events -- it only feeds the sustained-overcurrent reboot path
+(5 s continuous over limit). No lower/undercurrent limit by design.
+ABSOLUTE LIMIT VALUE: 2050.0 written on 01 (= Aug-1 mean+4SD) but that baseline
+predates the reflash: the board now runs 15 W mode and draws ~1500 mA loaded
+(Aug-6 1-h baseline mean 1496.6 SD 16.3 max 1656; Aug-14 test mean 1530 max 1584).
+mean+4SD on the valid Aug-6 data = 1562, BELOW its own max (distribution is
+steppy, SD understates the tail) -- so the pending proposal is baseline max
++ 100 mA (~1750 for 01), decision not yet made. NOTE: BASELINE_TEST runs the
+full workload stack by design, so baselines DO include sim load.
+FLEET SWEEP OWED (boards 02-08 when next powered): repo git pull + restart
+test_control.service (per-run log folders, a88677d) + apply the ch5 detector
+change + per-board baseline -> per-board absolute limit.
 
 OPEN — CAMPAIGN READINESS / VERIFY
 ----------------------------------
