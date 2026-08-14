@@ -107,6 +107,9 @@ class TestCoordinatorApp(ttk.Frame):
             if see_log_root is not None
             else DEFAULT_SEE_LOG_ROOT
         )
+        # Root the launcher was given; per-board folders nest under it when
+        # the operator picks a DUT (set_active_dut).
+        self._see_log_base = self._see_log_root
         self._see_tailer = SeeLogTailer(self._see_log_root)
         # Durable arbiter-side SEE record: every classified event the live panel
         # shows is also appended to see_events/<run_id>.jsonl, so the tally
@@ -2068,6 +2071,32 @@ class TestCoordinatorApp(ttk.Frame):
             self._run_id_sci(fluence),
         )
         return "_".join(self._run_id_part(part) for part in parts)
+
+    def set_active_dut(self, name: str) -> None:
+        """Route local log storage to arbiter_logs/<board>/ for this DUT.
+
+        Storage-only: the transport target is unchanged. The SEE tailer, the
+        per-run see_events files, and the end-of-run full pull all follow the
+        new root, and active_board.json (at the base root) tells the
+        launcher's pull loop to mirror the DUT's logs into the same folder.
+        A non-board selection falls back to the base root."""
+        safe = self._run_id_part(name)
+        is_board = name.startswith("orin-nano")
+        root = self._see_log_base / safe if is_board else self._see_log_base
+        if root == self._see_log_root:
+            return
+        self._see_log_root = root
+        try:
+            self._see_log_root.mkdir(parents=True, exist_ok=True)
+            with open(
+                self._see_log_base / "active_board.json", "w", encoding="utf-8"
+            ) as handle:
+                json.dump({"name": safe if is_board else ""}, handle)
+        except OSError:
+            pass
+        self._see_tailer = SeeLogTailer(self._see_log_root)
+        self._see_events_dir = self._see_log_root / "see_events"
+        self._append_log(f"DUT selected: {name} -> logs in {self._see_log_root}")
 
     def _see_events_file(self, run_id: str | None) -> Path:
         """Per-run SEE file under arbiter_logs/see_events/. Events whose record

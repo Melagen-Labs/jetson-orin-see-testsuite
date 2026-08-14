@@ -27,7 +27,18 @@ from coordinator.ui import CUSTOM_ENERGY_LABEL
 
 CUSTOM_OPTION = "Custom..."
 PRESET_THICKNESSES = (8, 12, 16)
-DUT_OPTIONS = ("Jetson Orin Nano", CUSTOM_OPTION)
+# The fleet boards an operator can pick as the DUT. Picking one routes the
+# local log mirror into arbiter_logs/<board>/ (storage only -- the transport
+# target is whatever the arbiter was launched against).
+DUT_OPTIONS = (
+    "orin-nano-01",
+    "orin-nano-04",
+    "orin-nano-05",
+    "orin-nano-06",
+    "orin-nano-07",
+    "orin-nano-08",
+    CUSTOM_OPTION,
+)
 SHIELD_OPTIONS = ("Bare", "MLC1", "MLC2", "Aluminium", CUSTOM_OPTION)
 FLUX_PRESETS = (1e3, 1e4, 1e5, 1e6, 1e7, 1e8)
 REFRESH_MS = 250
@@ -84,7 +95,7 @@ def apply_campaign_ui(app: Any) -> None:
     # Insert compact DUT and beam sections before Selected Configuration.
     _shift_rows(app, first_row=5, offset=2)
 
-    app.dut_type_var = tk.StringVar(value="Jetson Orin Nano")
+    app.dut_type_var = tk.StringVar(value=DUT_OPTIONS[0])
     app.dut_serial_var = tk.StringVar()
     app.custom_dut_name = ""
     app.custom_shield_name = ""
@@ -114,6 +125,17 @@ def apply_campaign_ui(app: Any) -> None:
         width=24,
     )
     dut_box.grid(row=0, column=1, sticky="ew", padx=(0, 18), pady=4)
+
+    # Route the local log mirror to arbiter_logs/<board>/ whenever the DUT
+    # selection changes (Custom keeps whatever board folder was last active
+    # until a real board is picked again).
+    def route_dut_storage(*_args: Any) -> None:
+        selected = app.dut_type_var.get()
+        if selected != CUSTOM_OPTION and hasattr(app, "set_active_dut"):
+            app.set_active_dut(selected)
+
+    app.dut_type_var.trace_add("write", route_dut_storage)
+    route_dut_storage()
 
     ttk.Label(dut_frame, text="Run Notes / Comments:").grid(
         row=0, column=2, sticky="nw", padx=(0, 8), pady=4
@@ -221,7 +243,7 @@ def apply_campaign_ui(app: Any) -> None:
         if name and name.strip():
             app.custom_dut_name = name.strip()
         else:
-            app.dut_type_var.set("Jetson Orin Nano")
+            app.dut_type_var.set(DUT_OPTIONS[0])
         app._update_summary()
 
     def prompt_custom_shield() -> bool:

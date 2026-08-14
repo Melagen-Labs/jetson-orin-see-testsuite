@@ -104,12 +104,24 @@ def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
                 "-o", "StrictHostKeyChecking=accept-new"]
     remote_tar = f"tar -C {DUT_LOG_DIR} -cz --exclude=see_dumps ."
     while not stop.is_set():
+        # The GUI's DUT selector writes active_board.json; mirror into that
+        # board's folder so each DUT's logs stay separated locally.
+        dest = logs
         try:
+            with open(os.path.join(logs, "active_board.json"),
+                      encoding="utf-8") as handle:
+                board = json.load(handle).get("name", "")
+            if board:
+                dest = os.path.join(logs, board)
+        except (OSError, ValueError):
+            pass
+        try:
+            os.makedirs(dest, exist_ok=True)
             src = subprocess.Popen(
                 ["ssh", *ssh_opts, f"{dut_user}@{dut_host}", remote_tar],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )
-            subprocess.run(["tar", "-xz", "-C", logs], stdin=src.stdout,
+            subprocess.run(["tar", "-xz", "-C", dest], stdin=src.stdout,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             src.wait()
         except OSError:
