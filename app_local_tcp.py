@@ -21,6 +21,7 @@ from coordinator.board_selector import (
 )
 from coordinator.campaign_storage_cleanup import apply_campaign_storage_cleanup
 from coordinator.campaign_ui_final import apply_campaign_ui_final
+from coordinator.campaign_ui_layout import apply_campaign_ui_layout
 from coordinator.campaign_ui_polished import apply_campaign_ui_polished
 from coordinator.campaign_ui_simple import apply_campaign_ui
 from coordinator.transport import TcpTransport
@@ -78,6 +79,9 @@ def main() -> None:
     apply_campaign_ui_polished(app)
     apply_campaign_storage_cleanup(app)
     apply_board_selector(app, config)
+    # Last on purpose: the board selector's row-shift must run before widgets
+    # are re-homed into frames, or it would corrupt their in-frame rows.
+    apply_campaign_ui_layout(app)
     root.mainloop()
 
 
