@@ -5,11 +5,11 @@ row-shifting must not run over widgets this layer re-homes into frames.
 
 Section order after this layer:
 
-1. Test Duration
-2. DUT and Run Information
-3. Beam Parameters -- beam energy selection joins the flux row; the
-   free-standing Beam Energy row at the top is removed
-4. Shielding Configuration -- new frame owning material, thickness, and
+1. DUT and Run Information
+2. Beam Parameters -- beam energy AND test duration join the flux row, so the
+   three per-run values sit together; the free-standing Beam Energy and Test
+   Duration rows at the top are removed
+3. Shielding Configuration -- new frame owning material, thickness, and
    the preset-to-physical thickness conversion readout
 
 The Selected Configuration summary section is removed; its shield
@@ -111,9 +111,21 @@ def apply_campaign_ui_layout(app: Any) -> None:
     energy_widget.grid(in_=beam_frame, row=0, column=3, sticky="w", pady=4)
     # Created before the frame, so raise it above the frame surface.
     energy_widget.lift()
-    # Keep flux and energy adjacent on the left; a trailing spacer absorbs width.
+    # Test duration joins the same row, so flux, energy, and duration -- the
+    # three values an operator sets per run -- are read and edited together.
+    duration_label.grid(
+        in_=beam_frame, row=0, column=4, sticky="w", padx=(24, 8), pady=4
+    )
+    app.duration_entry.configure(width=10)
+    app.duration_entry.grid(in_=beam_frame, row=0, column=5, sticky="w", pady=4)
+    # Both were created before the frame, so raise them above its surface.
+    duration_label.lift()
+    app.duration_entry.lift()
+
+    # Keep flux, energy, and duration adjacent on the left; a trailing spacer
+    # absorbs the leftover width.
     beam_frame.columnconfigure(1, weight=0)
-    beam_frame.columnconfigure(4, weight=1)
+    beam_frame.columnconfigure(6, weight=1)
 
     # Material and thickness share one row, mirroring the flux/energy row of
     # Beam Parameters; a trailing spacer column absorbs the leftover width.
@@ -180,9 +192,8 @@ def apply_campaign_ui_layout(app: Any) -> None:
 
     row = 1
 
-    duration_label.grid_configure(row=row)
-    app.duration_entry.grid_configure(row=row)
-    row += 1
+    # Test duration is no longer a top-level row -- it moved into the beam row
+    # above, beside flux and energy.
 
     dut_frame.grid_configure(row=row, pady=(14, 8))
     row += 1

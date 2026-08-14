@@ -99,7 +99,6 @@ class TestCampaignUiLayout(CampaignLayoutTestCase):
         )
 
     def test_top_level_sections_are_in_the_requested_order(self) -> None:
-        duration_row = int(self.app.duration_entry.grid_info()["row"])
         dut_row = int(
             find_labelframe(self.app, "DUT and Run Information").grid_info()["row"]
         )
@@ -111,10 +110,16 @@ class TestCampaignUiLayout(CampaignLayoutTestCase):
         )
         button_row = int(self.app.start_button.master.grid_info()["row"])
 
-        self.assertLess(duration_row, dut_row)
         self.assertLess(dut_row, beam_row)
         self.assertLess(beam_row, shield_row)
         self.assertLess(shield_row, button_row)
+
+    def test_duration_joins_the_beam_flux_row(self) -> None:
+        beam_frame = find_labelframe(self.app, "Beam Parameters")
+
+        info = self.app.duration_entry.grid_info()
+        self.assertEqual(str(info["in"]), str(beam_frame))
+        self.assertEqual(int(info["row"]), 0)
 
     def test_selected_configuration_section_is_removed(self) -> None:
         self.assertIsNone(find_labelframe(self.app, "Selected Configuration"))
