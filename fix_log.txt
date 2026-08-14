@@ -80,7 +80,12 @@ the monitored-bits denominator, never the requested fraction.
 
 OPEN — REMAINING FROM A2
 ------------------------
-[A2] Deployed channel-5 state is COMMITTED on-board (branch deployed-orin-nano-01-20260805; now at 50a28f4 after the 2026-08-14 changes: relative-only SEE rule bd4afdd, per-run rail CSV 209b308, centralized sessions 50a28f4) and exported to nano-archive\ch5-deployed-20260814.bundle (verified; supersedes the 20260805 bundle). Board has no push credentials for the GitHub remote (madhavsharma01312003/melagen-jetson-current-baseline), so an owner still needs to push the branch — pull the bundle and push from their machine.
+[A2-RESOLVED 2026-08-14] Channel-5 deployed branch deployed-orin-nano-01-20260805
+(tip 50a28f4: relative-only SEE rule, per-run rail CSV, centralized sessions)
+PUSHED to GitHub (madhavsharma01312003/melagen-jetson-current-baseline, a fork
+tied to Melagen-Labs) from Shiven's machine. Optional follow-up for the ch5
+owners: open the PR into Melagen-Labs/melagen-jetson-current-baseline main.
+Off-board bundle also kept at nano-archive\ch5-deployed-20260814.bundle.
 
 COMPLETED 2026-08-05 (Claude, via SSH; everything deleted was first archived to nano-archive\nano-declutter-20260805.tar.gz)
 --------------------
