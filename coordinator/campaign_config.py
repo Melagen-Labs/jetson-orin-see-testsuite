@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 
-CAMPAIGN_BEAM_ENERGIES_MEV = (50, 63, 125, 200)
+CAMPAIGN_BEAM_ENERGIES_MEV = (50, 63, 100, 200)
 CAMPAIGN_DUT_TYPES = ("Jetson Orin Nano",)
 CUSTOM_SHIELD_MATERIAL = "Custom"
 CAMPAIGN_SHIELDING_MATERIALS = (
