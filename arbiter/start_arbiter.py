@@ -101,8 +101,14 @@ def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
     per-file scp globs can't do that. Only the ~10 MB-each see_dumps are
     excluded; they arrive in the end-of-run PULL_MODE=full pull. Total moved per
     tick is KBs, so the 3 s cadence costs the DUT nothing."""
+    # Every fleet board answers at the same direct-cable IP, so pinning a host
+    # key per IP would hard-fail on every board swap ("Host key verification
+    # failed"). The cable is point-to-point, so skip host-key pinning entirely
+    # for this channel; identity is verified at a higher level (the hostname
+    # probe + jetson_id in every record).
     ssh_opts = ["-i", ssh_key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                "-o", "StrictHostKeyChecking=accept-new"]
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=" + os.path.join(logs, ".cable_known_hosts")]
     remote_tar = f"tar -C {DUT_LOG_DIR} -cz --exclude=see_dumps ."
     while not stop.is_set():
         # The GUI's DUT selector writes active_board.json; mirror into that

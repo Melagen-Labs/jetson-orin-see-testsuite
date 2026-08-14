@@ -54,7 +54,10 @@ LOCAL_LOG_DIR="${LOCAL_LOG_DIR:-./arbiter_logs}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/radtest_pull}"
 PSTORE_DIR="${PSTORE_DIR:-/sys/fs/pstore}"
 
-SSH_OPTS="-i ${SSH_KEY} -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new"
+# No per-IP host-key pinning: all fleet boards share the direct-cable IP, so a
+# pinned key breaks on every board swap. Point-to-point link; identity is
+# checked at a higher level (hostname probe / jetson_id in the records).
+SSH_OPTS="-i ${SSH_KEY} -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
 mkdir -p "${LOCAL_LOG_DIR}"
 
