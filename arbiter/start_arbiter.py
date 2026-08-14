@@ -139,17 +139,26 @@ def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
                     json.dump({"name": name, "checked_at": time.time()}, handle)
         except (OSError, subprocess.TimeoutExpired):
             pass  # unknown identity just means the GUI skips the cross-check
+        src = None
         try:
             os.makedirs(dest, exist_ok=True)
             src = subprocess.Popen(
                 ["ssh", *ssh_opts, f"{dut_user}@{dut_host}", remote_tar],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )
+            # Hard deadline on the whole transfer: a stalled ssh otherwise
+            # leaves tar blocked forever, holding destination files open
+            # (observed 2026-08-14 -- a zombie tar pinned a log for hours).
             subprocess.run(["tar", "-xz", "-C", dest], stdin=src.stdout,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            src.wait()
-        except OSError:
-            pass  # ssh/tar missing or DUT down -- try again next tick
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            pass  # DUT down or transfer stalled -- try again next tick
+        finally:
+            if src is not None and src.poll() is None:
+                src.kill()
+            if src is not None:
+                src.wait()
         jsonl_to_csv(logs)
         stop.wait(3)
 
