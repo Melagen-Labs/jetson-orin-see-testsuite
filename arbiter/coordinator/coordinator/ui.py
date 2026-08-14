@@ -465,6 +465,22 @@ class TestCoordinatorApp(ttk.Frame):
             padx=(8, 0),
         )
 
+        # Live run clock: ticks from the moment a START/BASELINE is accepted,
+        # freezes at the final value when the run ends (so the last reading is
+        # the run's wall-clock length, not a blank).
+        self.elapsed_var = tk.StringVar(value="Elapsed: --:--:--")
+        self._elapsed_started: float | None = None
+        self._elapsed_after_id: str | None = None
+        ttk.Label(
+            button_frame,
+            textvariable=self.elapsed_var,
+            font=("Segoe UI", 10, "bold"),
+        ).grid(
+            row=0,
+            column=2,
+            padx=(18, 0),
+        )
+
         # Baseline run: same workloads as a beam test, beam off, plus a current
         # capture. Its own length field, in minutes -- baselines run for an hour,
         # not the ~100 s of a beam shot, and Stop Test ends either kind of run.
@@ -758,7 +774,12 @@ class TestCoordinatorApp(ttk.Frame):
     ) -> None:
         """Change state and update all related controls."""
 
+        previous_state = self.coordinator_state
         self.coordinator_state = new_state
+        if new_state == CoordinatorState.ACTIVE:
+            self._start_elapsed_clock()
+        elif previous_state == CoordinatorState.ACTIVE:
+            self._stop_elapsed_clock()
         self._apply_control_state()
         # The custom-energy field is only editable at IDLE, and only when the
         # dropdown is on Custom -- both conditions live in one place.
@@ -767,6 +788,32 @@ class TestCoordinatorApp(ttk.Frame):
         self._append_log(
             f"STATE -> {new_state.name}"
         )
+
+    def _start_elapsed_clock(self) -> None:
+        """Begin ticking the elapsed-time display for the run that just started."""
+        self._elapsed_started = time.monotonic()
+        self._tick_elapsed_clock()
+
+    def _stop_elapsed_clock(self) -> None:
+        """Freeze the display at the run's final elapsed value."""
+        if self._elapsed_after_id is not None:
+            self.master.after_cancel(self._elapsed_after_id)
+            self._elapsed_after_id = None
+        self._tick_elapsed_clock(reschedule=False)
+        self._elapsed_started = None
+
+    def _tick_elapsed_clock(self, reschedule: bool = True) -> None:
+        if self._elapsed_started is None:
+            return
+        total = int(time.monotonic() - self._elapsed_started)
+        self.elapsed_var.set(
+            "Elapsed: "
+            f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+        )
+        if reschedule:
+            self._elapsed_after_id = self.master.after(
+                1000, self._tick_elapsed_clock
+            )
 
     def _apply_control_state(self) -> None:
         """Enable controls allowed in the current state."""
