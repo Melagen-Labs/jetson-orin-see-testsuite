@@ -35,6 +35,37 @@ class BoardConfig:
     warnings: list[str] = field(default_factory=list)
 
 
+CLI_OVERRIDE_NAME = "CLI override"
+
+
+def resolve_initial_board(
+    config: BoardConfig,
+    cli_host: str | None,
+    cli_port: int | None = None,
+) -> tuple[list[Board], Board]:
+    """Determine the selectable boards and the initially selected one.
+
+    A --host that matches a configured board selects it; an unknown
+    --host is appended as an extra "CLI override" entry so existing
+    command lines keep working alongside config.json.
+    """
+
+    boards = list(config.boards)
+
+    if cli_host is None:
+        return boards, boards[0]
+
+    for board in boards:
+        if board.host == cli_host and (
+            cli_port is None or (board.port or config.port) == cli_port
+        ):
+            return boards, board
+
+    override = Board(CLI_OVERRIDE_NAME, cli_host, cli_port)
+    boards.append(override)
+    return boards, override
+
+
 def _parse_board(
     entry: object,
     warnings: list[str],

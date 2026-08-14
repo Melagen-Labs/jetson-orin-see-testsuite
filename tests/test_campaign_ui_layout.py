@@ -7,8 +7,6 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 
-from coordinator.board_config import Board, BoardConfig
-from coordinator.board_selector import apply_board_selector
 from coordinator.campaign_storage_cleanup import apply_campaign_storage_cleanup
 from coordinator.campaign_ui_final import apply_campaign_ui_final
 from coordinator.campaign_ui_layout import apply_campaign_ui_layout
@@ -36,8 +34,6 @@ def find_label(app: TestCoordinatorApp, text: str) -> ttk.Label | None:
 class CampaignLayoutTestCase(unittest.TestCase):
     """Build the layered app once per test; skip cleanly without a display."""
 
-    with_board_selector = False
-
     def setUp(self) -> None:
         try:
             self.root = tk.Tk()
@@ -58,15 +54,6 @@ class CampaignLayoutTestCase(unittest.TestCase):
         apply_campaign_ui_final(self.app)
         apply_campaign_ui_polished(self.app)
         apply_campaign_storage_cleanup(self.app)
-        if self.with_board_selector:
-            apply_board_selector(
-                self.app,
-                BoardConfig(
-                    boards=[Board("orin-nano-01", "192.168.1.20")],
-                    port=6000,
-                    timeout_seconds=5.0,
-                ),
-            )
         apply_campaign_ui_layout(self.app)
 
     def tearDown(self) -> None:
@@ -96,6 +83,11 @@ class TestCampaignUiLayout(CampaignLayoutTestCase):
         self.assertEqual(
             str(thickness_box.grid_info()["in"]),
             str(shield_frame),
+        )
+        # Material and thickness share a row, like beam flux and energy.
+        self.assertEqual(
+            int(material_box.grid_info()["row"]),
+            int(thickness_box.grid_info()["row"]),
         )
 
     def test_top_level_sections_are_in_the_requested_order(self) -> None:
@@ -159,29 +151,6 @@ class TestCampaignUiLayout(CampaignLayoutTestCase):
         self.assertEqual(str(energy_box.cget("state")), "readonly")
         self.assertEqual(str(material_box.cget("state")), "readonly")
         self.assertEqual(str(thickness_box.cget("state")), "readonly")
-
-
-class TestCampaignUiLayoutWithBoardSelector(CampaignLayoutTestCase):
-    with_board_selector = True
-
-    def test_target_board_stays_first_above_test_duration(self) -> None:
-        board_row = int(self.app.board_selector.grid_info()["row"])
-        duration_row = int(self.app.duration_entry.grid_info()["row"])
-        dut_row = int(
-            find_labelframe(self.app, "DUT and Run Information").grid_info()["row"]
-        )
-
-        self.assertEqual(board_row, 1)
-        self.assertLess(board_row, duration_row)
-        self.assertLess(duration_row, dut_row)
-
-    def test_moved_widgets_survive_the_selector_row_shift(self) -> None:
-        shield_frame = find_labelframe(self.app, "Shielding Configuration")
-        _, material_box, thickness_box = self.app._selection_widgets
-
-        self.assertEqual(str(material_box.grid_info()["in"]), str(shield_frame))
-        self.assertEqual(int(material_box.grid_info()["row"]), 0)
-        self.assertEqual(int(thickness_box.grid_info()["row"]), 1)
 
 
 if __name__ == "__main__":

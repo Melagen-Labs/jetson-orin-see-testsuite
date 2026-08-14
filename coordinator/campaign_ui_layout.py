@@ -1,18 +1,15 @@
 """Reorganized operator layout for the campaign GUI.
 
-Applied LAST, after every other campaign layer (and after
-``board_selector.apply_board_selector`` when a target-board dropdown is
-present -- the selector's row-shifting must not run over widgets this layer
-re-homes into frames).
+Applied LAST, after every other campaign layer -- earlier layers'
+row-shifting must not run over widgets this layer re-homes into frames.
 
 Section order after this layer:
 
-1. Target Board (unchanged, when present)
-2. Test Duration
-3. DUT and Run Information
-4. Beam Parameters -- beam energy selection joins the flux row; the
+1. Test Duration
+2. DUT and Run Information
+3. Beam Parameters -- beam energy selection joins the flux row; the
    free-standing Beam Energy row at the top is removed
-5. Shielding Configuration -- new frame owning material, thickness, and
+4. Shielding Configuration -- new frame owning material, thickness, and
    the preset-to-physical thickness conversion readout
 
 The Selected Configuration summary section is removed; its shield
@@ -112,32 +109,36 @@ def apply_campaign_ui_layout(app: Any) -> None:
     beam_frame.columnconfigure(1, weight=0)
     beam_frame.columnconfigure(4, weight=1)
 
+    # Material and thickness share one row, mirroring the flux/energy row of
+    # Beam Parameters; a trailing spacer column absorbs the leftover width.
     shield_frame = ttk.LabelFrame(app, text="Shielding Configuration", padding=12)
-    shield_frame.columnconfigure(1, weight=1)
+    shield_frame.columnconfigure(4, weight=1)
 
     ttk.Label(shield_frame, text="Shielding Material:").grid(
-        row=0, column=0, sticky="w", padx=(0, 12), pady=4
+        row=0, column=0, sticky="w", padx=(0, 8), pady=4
     )
-    material_box.grid(in_=shield_frame, row=0, column=1, sticky="ew", pady=4)
+    material_box.configure(width=20)
+    material_box.grid(in_=shield_frame, row=0, column=1, sticky="w", pady=4)
     material_box.lift()
 
     ttk.Label(shield_frame, text="Thickness (mm):").grid(
-        row=1, column=0, sticky="w", padx=(0, 12), pady=4
+        row=0, column=2, sticky="w", padx=(24, 8), pady=4
     )
-    thickness_box.grid(in_=shield_frame, row=1, column=1, sticky="ew", pady=4)
+    thickness_box.configure(width=12)
+    thickness_box.grid(in_=shield_frame, row=0, column=3, sticky="w", pady=4)
     thickness_box.lift()
 
     # The preset-to-physical conversion, previously only visible in the
     # Selected Configuration summary, now lives with the selectors it explains.
     app.shield_conversion_var = tk.StringVar()
     ttk.Label(shield_frame, text="Physical Thickness:").grid(
-        row=2, column=0, sticky="w", padx=(0, 12), pady=(8, 0)
+        row=1, column=0, sticky="w", padx=(0, 8), pady=(8, 0)
     )
     ttk.Label(
         shield_frame,
         textvariable=app.shield_conversion_var,
         font=("Segoe UI", 10, "bold"),
-    ).grid(row=2, column=1, sticky="w", pady=(8, 0))
+    ).grid(row=1, column=1, columnspan=3, sticky="w", pady=(8, 0))
 
     # Every selection-change path already funnels through _update_summary,
     # so hook the conversion readout there. Applied last, this wraps the
@@ -172,13 +173,6 @@ def apply_campaign_ui_layout(app: Any) -> None:
     )
 
     row = 1
-
-    board_box = getattr(app, "board_selector", None)
-    board_label = _find_label(app, "Target Board:")
-    if board_box is not None and board_label is not None:
-        board_label.grid_configure(row=row)
-        board_box.grid_configure(row=row)
-        row += 1
 
     duration_label.grid_configure(row=row)
     app.duration_entry.grid_configure(row=row)

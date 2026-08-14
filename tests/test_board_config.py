@@ -8,7 +8,9 @@ from pathlib import Path
 from coordinator.board_config import (
     DEFAULT_BOARDS,
     Board,
+    BoardConfig,
     load_board_config,
+    resolve_initial_board,
 )
 
 
@@ -113,6 +115,44 @@ class TestLoadBoardConfig(unittest.TestCase):
         config = load_board_config(self.config_path)
 
         self.assertEqual(config.boards, [Board("10.0.0.5", "10.0.0.5")])
+
+
+def make_config() -> BoardConfig:
+    return BoardConfig(
+        boards=[
+            Board("Direct Ethernet", "192.168.1.20"),
+            Board("orin-nano-01", "orin-nano-01"),
+        ],
+        port=6000,
+        timeout_seconds=5.0,
+    )
+
+
+class TestResolveInitialBoard(unittest.TestCase):
+    def test_no_cli_host_selects_first_board(self) -> None:
+        boards, selected = resolve_initial_board(make_config(), None)
+
+        self.assertEqual(selected, make_config().boards[0])
+        self.assertEqual(boards, make_config().boards)
+
+    def test_cli_host_matching_known_board_selects_it(self) -> None:
+        boards, selected = resolve_initial_board(
+            make_config(),
+            "orin-nano-01",
+        )
+
+        self.assertEqual(selected.name, "orin-nano-01")
+        self.assertEqual(boards, make_config().boards)
+
+    def test_unknown_cli_host_is_added_as_override(self) -> None:
+        boards, selected = resolve_initial_board(
+            make_config(),
+            "127.0.0.1",
+        )
+
+        self.assertEqual(selected.host, "127.0.0.1")
+        self.assertIn(selected, boards)
+        self.assertEqual(len(boards), 3)
 
 
 if __name__ == "__main__":

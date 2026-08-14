@@ -1,8 +1,7 @@
 """Start the simplified campaign coordinator GUI over TCP.
 
-Boards are listed in config.json (see config.example.json) and picked
-from the Target Board dropdown in the GUI. --host still works and
-overrides the initial selection:
+The target board comes from config.json (see config.example.json);
+the first listed board is used. --host overrides it:
 
     python app_local_tcp.py
     python app_local_tcp.py --host 192.168.1.20
@@ -14,9 +13,8 @@ import argparse
 import tkinter as tk
 from pathlib import Path
 
-from coordinator.board_config import load_board_config
-from coordinator.board_selector import (
-    apply_board_selector,
+from coordinator.board_config import (
+    load_board_config,
     resolve_initial_board,
 )
 from coordinator.campaign_storage_cleanup import apply_campaign_storage_cleanup
@@ -39,7 +37,7 @@ def main() -> None:
         default=None,
         help=(
             "Optional DUT address override. Without it, the first board "
-            "in config.json is selected; switch boards in the GUI."
+            "in config.json is used."
         ),
     )
     parser.add_argument("--port", type=int, default=None)
@@ -78,9 +76,6 @@ def main() -> None:
     apply_campaign_ui_final(app)
     apply_campaign_ui_polished(app)
     apply_campaign_storage_cleanup(app)
-    apply_board_selector(app, config)
-    # Last on purpose: the board selector's row-shift must run before widgets
-    # are re-homed into frames, or it would corrupt their in-frame rows.
     apply_campaign_ui_layout(app)
     root.mainloop()
 
