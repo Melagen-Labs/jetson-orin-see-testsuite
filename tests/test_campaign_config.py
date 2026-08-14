@@ -20,7 +20,7 @@ from coordinator.campaign_config import (
 
 class TestCampaignConfig(unittest.TestCase):
     def test_campaign_energies(self) -> None:
-        self.assertEqual(CAMPAIGN_BEAM_ENERGIES_MEV, (50, 63, 125, 200))
+        self.assertEqual(CAMPAIGN_BEAM_ENERGIES_MEV, (50, 63, 100, 200))
 
     def test_initial_dut_type(self) -> None:
         self.assertEqual(CAMPAIGN_DUT_TYPES, ("Jetson Orin Nano",))
