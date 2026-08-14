@@ -81,6 +81,13 @@ the monitored-bits denominator, never the requested fraction.
 [V3] README is behind reality: PR #8 + STOP-race were hardware-tested Aug 5 (run 60c9c55b) but listed as unconfirmed; tests/ listing omits test_control_receiver.py. Update.
 [V4] control_receiver.py docstring example uses beam_energy_mev 100, which validation now rejects (50/63/125/200). Fix.
 [V5] ARMED persists across reboots, so compute/memory log against the previous run_id between tests. Decide if acceptable or disarm between campaigns.
+     Related observation (2026-08-14, board 05): the workload services are
+     boot-enabled and run at full GPU load with run_id "unset" on any fresh
+     power-up, even with no ARMED flag and no run -- that is the flip side of
+     the mid-beam-reboot resume path. Decision (Shiven): accept for the
+     campaign, NO nano-side change; just `systemctl stop cuda_particles
+     mem_check_gpu` on boards that should sit idle. Future fix if wanted:
+     boot-start the workloads only when ARMED exists.
 
 OPEN — REMAINING FROM A2
 ------------------------
