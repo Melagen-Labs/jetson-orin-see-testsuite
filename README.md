@@ -2,6 +2,9 @@
 
 Laptop-side operator interface and TCP receiver prototype for preparing, transmitting, validating, and logging Jetson proton-test control commands.
 
+SSID: ATTinqbhxc
+Password: t8qstjpyjqfk
+
 ## Current capabilities
 
 - Tkinter operator GUI with controlled parameter selections
