@@ -59,7 +59,7 @@ OPEN — CAMPAIGN READINESS / VERIFY
 
 OPEN — REMAINING FROM A2
 ------------------------
-[A2] Deployed channel-5 state is now COMMITTED on-board (branch deployed-orin-nano-01-20260805, commit 5153b37, 30 files; board stays on this branch) and exported to nano-archive\ch5-deployed-20260805.bundle — but the board has no push credentials, so an owner still needs to push the branch to GitHub (e.g. git pull the bundle and push from their machine).
+[A2] Deployed channel-5 state is COMMITTED on-board (branch deployed-orin-nano-01-20260805; now at 50a28f4 after the 2026-08-14 changes: relative-only SEE rule bd4afdd, per-run rail CSV 209b308, centralized sessions 50a28f4) and exported to nano-archive\ch5-deployed-20260814.bundle (verified; supersedes the 20260805 bundle). Board has no push credentials for the GitHub remote (madhavsharma01312003/melagen-jetson-current-baseline), so an owner still needs to push the branch — pull the bundle and push from their machine.
 
 COMPLETED 2026-08-05 (Claude, via SSH; everything deleted was first archived to nano-archive\nano-declutter-20260805.tar.gz)
 --------------------
