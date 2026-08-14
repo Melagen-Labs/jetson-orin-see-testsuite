@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import tkinter as tk
+from dataclasses import replace as dataclass_replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -1369,6 +1370,12 @@ class TestCoordinatorApp(ttk.Frame):
                     **request_kwargs,
                 )
 
+            # Swap the opaque uuid for the descriptive run id (validation has
+            # already accepted every field the label is built from).
+            request = dataclass_replace(
+                request, request_id=self._descriptive_run_id(request)
+            )
+
         except (TypeError, ValueError) as error:
             self.status_var.set("Invalid configuration")
             self._append_log(f"Validation error: {error}")
@@ -1532,6 +1539,16 @@ class TestCoordinatorApp(ttk.Frame):
 
             request = BaselineTestRequest.create(
                 duration_minutes=minutes,
+            )
+            # Baselines have no beam/shield fields; date (arbiter clock) plus
+            # the board and length still beats a uuid when reading logs later.
+            request = dataclass_replace(
+                request,
+                request_id="_".join((
+                    datetime.now().strftime("%Y%m%d-%H%M%S"),
+                    "baseline",
+                    f"{minutes}min",
+                )),
             )
 
         except (TypeError, ValueError) as error:
@@ -2008,6 +2025,49 @@ class TestCoordinatorApp(ttk.Frame):
         )
         self.see_log.see("end")
         self.see_log.configure(state="disabled")
+
+    @staticmethod
+    def _run_id_part(value: object) -> str:
+        """One underscore-free, filesystem-safe run-id component."""
+        text = "".join(
+            ch if ch.isalnum() or ch in ".-" else "-" for ch in str(value)
+        )
+        return text.strip("-.") or "na"
+
+    @staticmethod
+    def _run_id_sci(value: float) -> str:
+        """Compact scientific notation for flux/fluence: 5000000.0 -> 5e6."""
+        if not value:
+            return "0"
+        text = f"{value:.1e}".replace(".0e", "e")
+        return text.replace("e+0", "e").replace("e+", "e").replace("e-0", "e-")
+
+    def _descriptive_run_id(self, request: TestRequest) -> str:
+        """Human-readable run id:
+        date_shieldingmaterial_thickness_beamenergy_beamflux_beamfluence.
+
+        The date/time comes from THIS machine's clock (the arbiter laptop,
+        NTP-synced over WiFi) -- the DUT's clock is wrong until its own NTP
+        catches up after a cold boot, so it must not name runs. Fluence is the
+        planned value (selected flux x requested duration); the live counter
+        can't be known at start. Seconds in the stamp keep repeated identical
+        configurations unique."""
+        thickness = (
+            request.shielding_actual_thickness_mm
+            if request.shielding_actual_thickness_mm is not None
+            else request.shielding_thickness_mm
+        )
+        flux = float(getattr(self, "campaign_selected_flux", 0.0) or 0.0)
+        fluence = flux * float(request.duration_s)
+        parts = (
+            datetime.now().strftime("%Y%m%d-%H%M%S"),
+            request.shielding_material,
+            f"{float(thickness):g}mm",
+            f"{float(request.beam_energy_mev):g}MeV",
+            self._run_id_sci(flux),
+            self._run_id_sci(fluence),
+        )
+        return "_".join(self._run_id_part(part) for part in parts)
 
     def _see_events_file(self, run_id: str | None) -> Path:
         """Per-run SEE file under arbiter_logs/see_events/. Events whose record
