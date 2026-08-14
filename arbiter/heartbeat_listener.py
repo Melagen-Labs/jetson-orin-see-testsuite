@@ -283,6 +283,16 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Arbiter JSONL log path (default: %(default)s)",
     )
     parser.add_argument(
+        "--active-board-file",
+        default=None,
+        help=(
+            "Optional path to the GUI's active_board.json; when given, events "
+            "are filed under arbiter_logs/<board>/heartbeat/ for the selected "
+            "DUT (the direct-cable topology means arriving heartbeats are "
+            "that board's). Without it, --log-file is used unchanged."
+        ),
+    )
+    parser.add_argument(
         "--run-id",
         default="unassigned",
         help="Current test run identifier",
@@ -298,9 +308,29 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     logger = JsonlEventLogger(args.log_file)
+    loggers: dict[str, JsonlEventLogger] = {logger.path: logger}
+
+    def active_logger() -> JsonlEventLogger:
+        """Logger for the currently selected DUT's folder (cached per path)."""
+        if not args.active_board_file:
+            return logger
+        try:
+            with open(args.active_board_file, encoding="utf-8") as handle:
+                board = json.load(handle).get("name", "")
+        except (OSError, ValueError):
+            board = ""
+        if not board:
+            return logger
+        # <arbiter_logs>/<board>/heartbeat/heartbeat_log.jsonl, where
+        # <arbiter_logs> is the grandparent of the default --log-file path.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(args.log_file)))
+        path = os.path.join(root, board, "heartbeat", "heartbeat_log.jsonl")
+        if path not in loggers:
+            loggers[path] = JsonlEventLogger(path)
+        return loggers[path]
 
     def record(event: dict[str, Any]) -> None:
-        logger.write(event)
+        active_logger().write(event)
         print(json.dumps(event), flush=True)
 
     print(

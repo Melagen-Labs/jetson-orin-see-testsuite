@@ -163,7 +163,9 @@ def main():
     new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)  # Windows; 0 elsewhere
     print(f"[arbiter] starting heartbeat listener (UDP 5555, log: {hb_log})...")
     subprocess.Popen([py, HB_LISTENER, "--port", "5555", "--timeout", "5",
-                      "--log-file", hb_log],
+                      "--log-file", hb_log,
+                      "--active-board-file",
+                      os.path.join(logs, "active_board.json")],
                      creationflags=new_console)
 
     # 2. Live log-pull loop -- background thread.
