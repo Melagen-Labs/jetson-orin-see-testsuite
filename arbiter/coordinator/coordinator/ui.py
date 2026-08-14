@@ -108,9 +108,11 @@ class TestCoordinatorApp(ttk.Frame):
         )
         self._see_tailer = SeeLogTailer(self._see_log_root)
         # Durable arbiter-side SEE record: every classified event the live panel
-        # shows is also appended here, so the tally survives GUI restarts and can
-        # be diffed against the DUT's own channel logs after the campaign.
-        self._see_events_path = self._see_log_root / "see_events.jsonl"
+        # shows is also appended to see_events/<run_id>.jsonl, so the tally
+        # survives GUI restarts and can be diffed against the DUT's channel
+        # logs. The file is created (empty) the moment a run is accepted --
+        # "file exists with no rows" is the positive record of a clean run.
+        self._see_events_dir = self._see_log_root / "see_events"
         self._see_after_id: str | None = None
 
         # End-of-run full log pull. The periodic arbiter pull runs PULL_MODE=live
@@ -1462,6 +1464,7 @@ class TestCoordinatorApp(ttk.Frame):
             self._set_coordinator_state(CoordinatorState.ACTIVE)
             self._schedule_auto_stop(request.duration_s)
             self._clear_see_panel()
+            self._open_run_see_log(request.request_id)
 
             self._record_event(
                 "START_TEST_ACCEPTED",
@@ -1639,6 +1642,7 @@ class TestCoordinatorApp(ttk.Frame):
                 request.request_id
             )
             self.active_run_is_baseline = True
+            self._open_run_see_log(request.request_id)
 
             self._set_coordinator_state(
                 CoordinatorState.ACTIVE
@@ -2005,15 +2009,32 @@ class TestCoordinatorApp(ttk.Frame):
         self.see_log.see("end")
         self.see_log.configure(state="disabled")
 
-    def _persist_see(self, event: dict[str, Any]) -> None:
-        """Append one classified SEE to arbiter_logs/see_events.jsonl. Unlike the
-        panel (cleared on every START), this file accumulates across runs; the
-        DUT's ts plus arbiter_ts records both clocks. Best-effort -- a disk error
-        must not take down the poll loop."""
+    def _see_events_file(self, run_id: str | None) -> Path:
+        """Per-run SEE file under arbiter_logs/see_events/. Events whose record
+        carried no run_id land in unattributed.jsonl rather than being lost."""
+        safe = str(run_id or "").replace("/", "_").replace("\\", "_")
+        return self._see_events_dir / f"{safe or 'unattributed'}.jsonl"
+
+    def _open_run_see_log(self, run_id: str) -> None:
+        """Create this run's (empty) SEE file the moment the run is accepted:
+        a clean run leaves an empty file as evidence, not an absence."""
         try:
+            self._see_events_dir.mkdir(parents=True, exist_ok=True)
+            self._see_events_file(run_id).touch()
+        except OSError:
+            pass
+
+    def _persist_see(self, event: dict[str, Any]) -> None:
+        """Append one classified SEE to its run's file. The DUT's ts plus
+        arbiter_ts records both clocks. Best-effort -- a disk error must not
+        take down the poll loop."""
+        try:
+            self._see_events_dir.mkdir(parents=True, exist_ok=True)
             record = dict(event)
             record["arbiter_ts"] = datetime.now().isoformat(timespec="seconds")
-            with open(self._see_events_path, "a", encoding="utf-8") as handle:
+            with open(
+                self._see_events_file(event.get("run_id")), "a", encoding="utf-8"
+            ) as handle:
                 handle.write(json.dumps(record) + "\n")
         except OSError:
             pass

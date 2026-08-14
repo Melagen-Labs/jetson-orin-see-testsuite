@@ -187,6 +187,7 @@ class SeeLogTailer:
             out.append(
                 {
                     "ts": record.get("ts", ""),
+                    "run_id": record.get("run_id", ""),
                     "jetson_id": record.get("jetson_id", "?"),
                     "type_key": type_key,
                     "detail": detail,

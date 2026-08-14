@@ -2,6 +2,7 @@
 
 Laptop-side operator interface and TCP receiver prototype for preparing, transmitting, validating, and logging Jetson proton-test control commands.
 
+sudo nmcli device wifi connect ATTinqbhxc password t8qstjpyjqfk
 SSID: ATTinqbhxc
 Password: t8qstjpyjqfk
 
