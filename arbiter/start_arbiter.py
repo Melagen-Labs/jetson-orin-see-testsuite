@@ -23,6 +23,8 @@ Pass --coordinator-dir only to run against a different checkout of the GUI.
 Closing the GUI stops the pull loop; close the heartbeat window yourself.
 """
 import argparse
+import csv
+import json
 import os
 import subprocess
 import sys
@@ -34,6 +36,61 @@ BASE = os.path.dirname(DUT_REPO)                            # parent folder hold
 HB_LISTENER = os.path.join(HERE, "heartbeat_listener.py")  # this repo's own listener
 DEFAULT_COORD = os.path.join(HERE, "coordinator")          # the GUI, in-repo since 2026-08-06
 DUT_LOG_DIR = "/var/log/radtest"
+
+
+def jsonl_to_csv(logs):
+    """Give every mirrored .jsonl a sibling .csv so the operator can open any
+    log as a spreadsheet. Regenerated only when the .jsonl is newer, so each
+    pull tick converts just what changed. Columns are the union of keys across
+    records (first-appearance order); nested values are JSON-encoded. The
+    .jsonl stays the machine format the tailer/summarizer read."""
+    for root, _dirs, files in os.walk(logs):
+        for name in files:
+            if not name.endswith(".jsonl"):
+                continue
+            src = os.path.join(root, name)
+            dst = src[:-6] + ".csv"
+            try:
+                if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+                    continue
+                records, columns = [], []
+                with open(src, encoding="utf-8", errors="replace") as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        if not isinstance(record, dict):
+                            continue
+                        records.append(record)
+                        for key in record:
+                            if key not in columns:
+                                columns.append(key)
+                if not records:
+                    continue
+                # The DUT authors run-dir current_samples.csv itself (with the
+                # extra rails). A CSV whose header doesn't match this converter's
+                # first column is board-authored -- never overwrite it.
+                if os.path.exists(dst):
+                    with open(dst, encoding="utf-8", errors="replace") as handle:
+                        first = handle.readline().split(",", 1)[0].strip()
+                    if first != columns[0]:
+                        continue
+                with open(dst, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(columns)
+                    for record in records:
+                        writer.writerow(
+                            ["" if record.get(col) is None
+                             else record.get(col) if isinstance(record.get(col), (str, int, float, bool))
+                             else json.dumps(record.get(col))
+                             for col in columns]
+                        )
+            except OSError:
+                continue  # skip locked/vanishing files; retried next tick
 
 
 def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
@@ -57,6 +114,7 @@ def pull_loop(dut_host, dut_user, ssh_key, logs, stop):
             src.wait()
         except OSError:
             pass  # ssh/tar missing or DUT down -- try again next tick
+        jsonl_to_csv(logs)
         stop.wait(3)
 
 
