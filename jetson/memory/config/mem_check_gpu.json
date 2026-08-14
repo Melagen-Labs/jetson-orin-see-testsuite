@@ -1,7 +1,9 @@
 {
   "target": "gpu",
   "buffer_mb": "auto",
-  "auto_fraction": 0.50,
+  "auto_fraction": 0.60,
+  "auto_max_mb": 3481,
+  "auto_reserve_mb": 2304,
   "patterns": ["0x00", "0xFF", "0x55", "0xAA"],
   "hold_sweeps": 8,
   "sweep_sleep_s": 0.05,

@@ -153,17 +153,29 @@ def gpu_mem_mb():
 
 
 def resolve_buffer_mb(cfg, ram_avail_mb):
-    """Resolve buffer_mb: a fixed integer, or "auto" -> a fraction of free RAM.
+    """Resolve buffer_mb: a fixed integer, or "auto" -> bounded fraction of free RAM.
 
-    "auto" maximizes coverage while leaving headroom for the OS and any
-    co-running workload (e.g. cuda_particles): it takes `auto_fraction` (default
-    0.70) of MemAvailable at startup, so 30% of what is free stays as headroom.
+    Orin's DRAM is unified (CPU, GPU, OS, and SoC clients share one LPDDR pool),
+    so a fraction alone can overshoot on a lightly-loaded system and starve
+    Linux into reclaim/OOM behavior that would masquerade as SEEs under beam.
+    "auto" therefore takes the MINIMUM of three bounds (beam-campaign review,
+    2026-08-14):
+
+        min( auto_max_mb,                        # absolute ceiling
+             auto_fraction  * MemAvailable,      # proportional take
+             MemAvailable - auto_reserve_mb )    # hard floor left for the system
+
+    Defaults: ceiling 3481 MB (3.4 GiB), fraction 0.60, reserve 2304 MB
+    (2.25 GiB). Raise auto_reserve_mb if the co-running workload's peak grows.
     """
     spec = cfg["buffer_mb"]
     if isinstance(spec, str) and spec.strip().lower() == "auto":
-        frac = float(cfg.get("auto_fraction", 0.70))
+        frac = float(cfg.get("auto_fraction", 0.60))
+        ceiling = int(cfg.get("auto_max_mb", 3481))
+        reserve = int(cfg.get("auto_reserve_mb", 2304))
         if ram_avail_mb:
-            return max(64, int(frac * ram_avail_mb))
+            bounded = min(ceiling, int(frac * ram_avail_mb), ram_avail_mb - reserve)
+            return max(64, bounded)
         sys.stderr.write("[mem_check] /proc/meminfo unavailable; 'auto' -> 2048 MB fallback\n")
         return 2048
     return int(spec)
